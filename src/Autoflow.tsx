@@ -231,6 +231,7 @@ const DEFAULT_LANE_W = 320;
 const DEFAULT_LANE_H = 400;
 const NODE_W = 172;
 const NODE_H = 56;
+const HISTORY_LIMIT = 50;
 
 const getNodeHeight = (n: NodeData) => {
   const hasMedia = !!(n.icon || n.image);
