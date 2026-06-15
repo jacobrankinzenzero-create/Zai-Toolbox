@@ -3972,6 +3972,10 @@ export default function App() {
       snapshot: history.present,
     });
   };
+  const onStartConnect = (e: any, id: string) => {
+    e.stopPropagation();
+    setDrag({ type: 'connect', from: id, snapshot: history.present });
+  };
 
   const onCanvasMouseDown = (e: any) => {
     if (
