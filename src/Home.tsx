@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FileEdit, GitBranch, Clock, ArrowRight } from 'lucide-react';
 
 const AppCard = ({
@@ -7,12 +8,17 @@ const AppCard = ({
   icon: Icon,
   onClick,
   accentColor = '#ff8300',
+}: {
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onClick: () => void;
+  accentColor?: string;
 }) => (
   <div
     onClick={onClick}
     className="group relative bg-white rounded-2xl p-6 border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden flex flex-col h-full"
   >
-    {/* Fluent 2 inspired hover accent bar */}
     <div
       className="absolute top-0 left-0 w-full h-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
       style={{ backgroundColor: accentColor }}
@@ -46,42 +52,11 @@ const AppCard = ({
   </div>
 );
 
-export default function App() {
-  // Mocking react-router's useNavigate for the preview environment
-  const [currentRoute, setCurrentRoute] = useState('/');
-
-  const navigate = (path) => {
-    setCurrentRoute(path);
-  };
-
-  // Mock routed page view
-  if (currentRoute !== '/') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200 text-center max-w-md w-full">
-          <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4 text-orange-600">
-            <GitBranch size={32} />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Navigated to {currentRoute}
-          </h2>
-          <p className="text-gray-500 mb-6">
-            This is a mock page transition to demonstrate routing.
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="bg-[#ff8300] hover:bg-[#d83b01] text-white px-6 py-2 rounded-lg font-medium transition-colors"
-          >
-            Go Back Home
-          </button>
-        </div>
-      </div>
-    );
-  }
+export default function Home() {
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans selection:bg-orange-100 selection:text-orange-900">
-      {/* Fluent Header */}
       <header className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-30 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div
@@ -98,7 +73,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto px-8 py-12">
         <div className="mb-10">
           <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
@@ -109,7 +83,6 @@ export default function App() {
           </p>
         </div>
 
-        {/* Apps Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <AppCard
             title="Autodoc"
