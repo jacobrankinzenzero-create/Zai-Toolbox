@@ -219,56 +219,57 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans flex justify-center p-8">
-      <div className="w-full max-w-6xl flex flex-col items-center">
-        {/* Header — consistent with Auto Dock: square Home button at top-left,
-            title in a top header bar with a muted leading icon. This header sits
-            OUTSIDE the exported <svg ref={svgRef}>, so it never appears in the PNG. */}
-        <div className="w-full flex justify-between items-center mb-6 gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={() => navigate('/')}
-              title="Back to Toolbox"
-              aria-label="Back to Toolbox"
-              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-gray-800">
+      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-gray-200 flex flex-col md:min-h-screen shadow-sm flex-shrink-0">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-extrabold text-lg shadow-sm flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #ff8300, #ff4700)' }}
             >
-              <Home className="w-5 h-5" />
-            </button>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 hidden sm:block flex-shrink-0">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="9"></circle>
-                    <path d="M12 7v5l3 2"></path>
-                  </svg>
-                </span>
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                  Dynamic Shift Modeler
-                </h2>
-              </div>
-              <p className="text-gray-500 text-sm mt-0.5 truncate">
-                Prove 24/7 coverage and handover overlap to your clients.
-              </p>
+              sm
             </div>
+            <span className="font-black text-xl tracking-tight text-gray-900 truncate">
+              shiftmodeler
+            </span>
           </div>
           <button
-            onClick={() => downloadSvgAsPng(svgRef, 'Shift_Coverage_4K.png')}
-            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-bold py-2.5 px-5 rounded-xl shadow-sm hover:bg-gray-50 transition-all flex-shrink-0"
+            type="button"
+            onClick={() => navigate('/')}
+            className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+            title="Back to Toolbox"
+            aria-label="Back to Toolbox"
           >
-            <DownloadIcon /> Export 4K PNG
+            <Home className="w-5 h-5" />
           </button>
         </div>
 
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
+              Output
+            </h3>
+            <button
+              onClick={() => downloadSvgAsPng(svgRef, 'Shift_Coverage_4K.png')}
+              className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm hover:bg-gray-800 transition-all"
+            >
+              <DownloadIcon /> Export 4K PNG
+            </button>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
+              About
+            </h3>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              Prove 24/7 coverage and handover overlap to your clients.
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <main className="flex-1 min-w-0 overflow-y-auto p-8">
+        <div className="w-full max-w-6xl mx-auto flex flex-col items-center">
         {/* Vis Canvas */}
         <div className="w-full bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden p-10 mb-8">
           <svg
@@ -725,7 +726,8 @@ const App = () => {
             )}
           </div>
         </div>
-      </div>
+        </div>
+      </main>
     </div>
   );
 };
