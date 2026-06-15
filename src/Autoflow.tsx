@@ -4496,6 +4496,52 @@ export default function App() {
             >
               <Home size={20} />
             </button>
+            {/* App title — placed right of the Home button to match Auto Dock's
+                header. This lives in the floating toolbar (DOM only); the PNG/SVG
+                export is rebuilt from diagram data, so it never appears in exports. */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: tokens.neutralBackground1,
+                border: `1px solid ${tokens.neutralStroke2}`,
+                borderRadius: tokens.radiusMedium,
+                boxShadow: tokens.shadow4,
+                padding: isMobile ? '4px 8px' : '6px 12px',
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  background: 'linear-gradient(135deg, #ff8300, #ff4700)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: 12,
+                  flexShrink: 0,
+                }}
+              >
+                Af
+              </div>
+              {!isMobile && (
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: tokens.neutralForeground1,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Autoflow
+                </span>
+              )}
+            </div>
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}
