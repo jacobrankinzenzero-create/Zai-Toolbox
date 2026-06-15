@@ -221,25 +221,49 @@ const App = () => {
   return (
     <div className="min-h-screen bg-gray-50 font-sans flex justify-center p-8">
       <div className="w-full max-w-6xl flex flex-col items-center">
-        {/* Header */}
-        <div className="w-full flex justify-between items-center mb-6">
-          <div>
+        {/* Header — consistent with Auto Dock: square Home button at top-left,
+            title in a top header bar with a muted leading icon. This header sits
+            OUTSIDE the exported <svg ref={svgRef}>, so it never appears in the PNG. */}
+        <div className="w-full flex justify-between items-center mb-6 gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => navigate('/')}
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 font-medium text-sm mb-2 transition-colors"
+              title="Back to Toolbox"
+              aria-label="Back to Toolbox"
+              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
             >
-              <Home className="w-4 h-4" /> Back to Toolbox
+              <Home className="w-5 h-5" />
             </button>
-            <h2 className="text-3xl font-bold text-gray-800">
-              Dynamic Shift Modeler
-            </h2>
-            <p className="text-gray-500 mt-1">
-              Prove 24/7 coverage and handover overlap to your clients.
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 hidden sm:block flex-shrink-0">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <path d="M12 7v5l3 2"></path>
+                  </svg>
+                </span>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                  Dynamic Shift Modeler
+                </h2>
+              </div>
+              <p className="text-gray-500 text-sm mt-0.5 truncate">
+                Prove 24/7 coverage and handover overlap to your clients.
+              </p>
+            </div>
           </div>
           <button
             onClick={() => downloadSvgAsPng(svgRef, 'Shift_Coverage_4K.png')}
-            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-bold py-2.5 px-5 rounded-xl shadow-sm hover:bg-gray-50 transition-all"
+            className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-bold py-2.5 px-5 rounded-xl shadow-sm hover:bg-gray-50 transition-all flex-shrink-0"
           >
             <DownloadIcon /> Export 4K PNG
           </button>
