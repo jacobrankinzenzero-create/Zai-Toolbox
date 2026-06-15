@@ -1,4 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Home } from 'lucide-react';
 
 // --- Global Utility: High-Res SVG to PNG Exporter ---
 const downloadSvgAsPng = (svgRef, filename) => {
@@ -100,6 +102,7 @@ const PlusIcon = () => (
 // MAIN APP: Shift Coverage Modeler
 // ============================================================================
 const App = () => {
+  const navigate = useNavigate();
   const svgRef = useRef(null);
 
   const [shifts, setShifts] = useState([
@@ -221,6 +224,12 @@ const App = () => {
         {/* Header */}
         <div className="w-full flex justify-between items-center mb-6">
           <div>
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 font-medium text-sm mb-2 transition-colors"
+            >
+              <Home className="w-4 h-4" /> Back to Toolbox
+            </button>
             <h2 className="text-3xl font-bold text-gray-800">
               Dynamic Shift Modeler
             </h2>

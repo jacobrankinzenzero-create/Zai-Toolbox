@@ -92,6 +92,8 @@ import {
   WindowConsole20Regular,
   ChartMultiple24Regular,
 } from '@fluentui/react-icons';
+import { useNavigate } from 'react-router-dom';
+import { Home } from 'lucide-react';
 
 // ============= Types =============
 type ShapeType =
@@ -3222,6 +3224,7 @@ const Sidebar = ({
 
 // ============= Main App Component Wrapper =============
 export default function App() {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<HistoryState>(() => ({
     past: [],
     present: makeDefault(),
@@ -4472,6 +4475,27 @@ export default function App() {
               flex: 1,
             }}
           >
+            <button
+              onClick={() => navigate('/')}
+              title="Back to Toolbox"
+              aria-label="Back to Toolbox"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: tokens.radiusMedium,
+                background: tokens.neutralBackground1,
+                border: `1px solid ${tokens.neutralStroke2}`,
+                boxShadow: tokens.shadow4,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: tokens.neutralForeground1,
+                flexShrink: 0,
+              }}
+            >
+              <Home size={20} />
+            </button>
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}

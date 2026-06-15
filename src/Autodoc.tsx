@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import './index.css';
+import { useNavigate } from 'react-router-dom';
+import { Home } from 'lucide-react';
 
 // --- TYPE DEFINITIONS ---
 interface TonePreset {
@@ -1334,6 +1336,7 @@ SectionComponent.displayName = 'SectionComponent';
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
+  const navigate = useNavigate();
   const [documentTitle, setDocumentTitle] = useState<string>(() => {
     return (
       localStorage.getItem('autodoc_title') || 'Untitled Statement of Work'
@@ -1656,6 +1659,14 @@ export default function App() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => navigate('/')}
+            className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Back to Toolbox"
+          >
+            <Home className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
           >
@@ -1686,6 +1697,15 @@ export default function App() {
               autodoc
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Back to Toolbox"
+            aria-label="Back to Toolbox"
+          >
+            <Home className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
