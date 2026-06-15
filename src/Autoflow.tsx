@@ -2194,6 +2194,7 @@ const Sidebar = ({
   open,
   onClose,
 }: SidebarProps) => {
+  const navigate = useNavigate();
   const [openSection, setOpenSection] = useState<string | null>('add');
   const [draggingLane, setDraggingLane] = useState<string | null>(null);
 
@@ -2323,19 +2324,19 @@ const Sidebar = ({
       <aside style={drawerStyle}>
         <div
           style={{
-            padding: '16px',
+            padding: '24px',
             borderBottom: `1px solid ${tokens.neutralStroke2}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 8,
+            gap: 10,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div
               style={{
-                width: 32,
-                height: 32,
+                width: 36,
+                height: 36,
                 borderRadius: 8,
                 background: 'linear-gradient(135deg, #ff8300, #ff4700)',
                 display: 'flex',
@@ -2345,44 +2346,77 @@ const Sidebar = ({
                 fontWeight: 800,
                 fontSize: 16,
                 boxShadow: tokens.shadow4,
+                flexShrink: 0,
               }}
             >
-              Af
+              af
             </div>
-            <div>
-              <div
-                style={{
-                  fontSize: 17,
-                  fontWeight: 700,
-                  color: tokens.neutralForeground1,
-                }}
-              >
-                Autoflow
-              </div>
-              <div style={{ fontSize: 12, color: tokens.neutralForeground3 }}>
-                Architecture & Flow
-              </div>
-            </div>
+            <span
+              style={{
+                fontSize: 20,
+                fontWeight: 900,
+                letterSpacing: '-0.02em',
+                color: tokens.neutralForeground1,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              autoflow
+            </span>
           </div>
-          {isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <button
-              onClick={onClose}
+              type="button"
+              onClick={() => navigate('/')}
+              title="Back to Toolbox"
+              aria-label="Back to Toolbox"
               style={{
                 width: 36,
                 height: 36,
                 borderRadius: tokens.radiusMedium,
                 border: 'none',
-                background: tokens.neutralBackground3,
+                background: 'transparent',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: tokens.neutralForeground1,
+                color: tokens.neutralForeground3,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = tokens.neutralBackground3;
+                e.currentTarget.style.color = tokens.neutralForeground1;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = tokens.neutralForeground3;
               }}
             >
-              <Icon path={uiIcons.close} size={18} />
+              <Home size={20} />
             </button>
-          )}
+            {isMobile && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close menu"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: tokens.radiusMedium,
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: tokens.neutralForeground3,
+                }}
+              >
+                <Icon path={uiIcons.close} size={18} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div
@@ -3224,7 +3258,6 @@ const Sidebar = ({
 
 // ============= Main App Component Wrapper =============
 export default function App() {
-  const navigate = useNavigate();
   const [history, setHistory] = useState<HistoryState>(() => ({
     past: [],
     present: makeDefault(),
@@ -4475,73 +4508,6 @@ export default function App() {
               flex: 1,
             }}
           >
-            <button
-              onClick={() => navigate('/')}
-              title="Back to Toolbox"
-              aria-label="Back to Toolbox"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: tokens.radiusMedium,
-                background: tokens.neutralBackground1,
-                border: `1px solid ${tokens.neutralStroke2}`,
-                boxShadow: tokens.shadow4,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: tokens.neutralForeground1,
-                flexShrink: 0,
-              }}
-            >
-              <Home size={20} />
-            </button>
-            {/* App title — placed right of the Home button to match Auto Dock's
-                header. This lives in the floating toolbar (DOM only); the PNG/SVG
-                export is rebuilt from diagram data, so it never appears in exports. */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: tokens.neutralBackground1,
-                border: `1px solid ${tokens.neutralStroke2}`,
-                borderRadius: tokens.radiusMedium,
-                boxShadow: tokens.shadow4,
-                padding: isMobile ? '4px 8px' : '6px 12px',
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
-                  background: 'linear-gradient(135deg, #ff8300, #ff4700)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontWeight: 800,
-                  fontSize: 12,
-                  flexShrink: 0,
-                }}
-              >
-                Af
-              </div>
-              {!isMobile && (
-                <span
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: tokens.neutralForeground1,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Autoflow
-                </span>
-              )}
-            </div>
             {isMobile && (
               <button
                 onClick={() => setSidebarOpen(true)}
