@@ -261,17 +261,17 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
         return tag === 'ul' || tag === 'ol';
       }) as HTMLElement[];
 
-      const marker = ordered ? `${index + 1}. ` : '• ';
+      const marker = ordered ? `${index + 1}. ` : '› ';
       const indentLeft = 720 + level * 360;
 
       const currentItemXml = paragraphXml(
-        runXml(marker) + inlineNodesToRuns(inlineContentNodes),
-        {
-          indentLeft,
-          hanging: 360,
-          spacingAfter: 80,
-        }
-      );
+      runXml(marker, { color: 'F28C28' }) + inlineNodesToRuns(inlineContentNodes),
+      {
+        indentLeft,
+        hanging: 360,
+        spacingAfter: 80,
+      }
+    );
 
       const nestedXml = nestedLists
         .map((nested) =>
@@ -291,13 +291,17 @@ function htmlToWordXml(html: string): string {
 
   if (!root) return '';
 
+  const arrowRun = runXml('› ', {
+    color: 'FF8300',
+  });
+
   const convertBlock = (node: ChildNode): string => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent?.trim();
 
       if (!text) return '';
 
-      return paragraphXml(runXml(text), {
+      return paragraphXml(arrowRun + runXml(text), {
         spacingAfter: 120,
       });
     }
@@ -310,21 +314,21 @@ function htmlToWordXml(html: string): string {
     const tag = el.tagName.toLowerCase();
 
     if (tag === 'h1') {
-      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
         style: 'Heading1',
         spacingAfter: 160,
       });
     }
 
     if (tag === 'h2') {
-      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
         style: 'Heading2',
         spacingAfter: 140,
       });
     }
 
     if (tag === 'h3') {
-      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
         style: 'Heading3',
         spacingAfter: 120,
       });
@@ -337,7 +341,7 @@ function htmlToWordXml(html: string): string {
         return paragraphXml(runXml(''));
       }
 
-      return paragraphXml(content, {
+      return paragraphXml(arrowRun + content, {
         spacingAfter: 120,
       });
     }
@@ -355,7 +359,7 @@ function htmlToWordXml(html: string): string {
     }
 
     if (tag === 'blockquote') {
-      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
         indentLeft: 720,
         spacingAfter: 120,
       });
@@ -418,14 +422,13 @@ function replaceSectionTableRows(
 
       let rowXml = templateRowXml;
 
-      rowXml = replaceMarkerParagraph(
-        rowXml,
-        titleMarker,
-        paragraphXml(runXml(`${index + 1}. ${title}`, { bold: true }), {
-          spacingAfter: 120,
-        })
-      );
+      // Keep the Word styling in the left cell.
+      // Only replace the marker text.
+      rowXml = rowXml
+        .split(titleMarker)
+        .join(escapeXml(`${index + 1}. ${title}`));
 
+      // Replace the paragraph containing the content marker with full generated Word XML.
       rowXml = replaceMarkerParagraph(
         rowXml,
         contentMarker,
