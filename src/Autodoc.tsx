@@ -1161,21 +1161,49 @@ const SectionComponent: React.FC<SectionComponentProps> = memo(
       [section.id, updateSection]
     );
 
-    const handleImageUpload = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            updateSection(section.id, {
-              images: [...(section.images || []), reader.result as string],
-            });
-          };
-          reader.readAsDataURL(file);
-        }
-      },
-      [section.id, section.images, updateSection]
-    );
+   const handleImageUpload = useCallback(
+  (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    const maxSizeMb = 4;
+    const maxSizeBytes = maxSizeMb * 1024 * 1024;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > maxSizeBytes) {
+      alert(`Please upload an image smaller than ${maxSizeMb}MB.`);
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      const currentImages = section.images || [];
+
+      updateSection(section.id, {
+        images: [...currentImages, reader.result as string],
+      });
+
+      // Allow the same file to be selected again later if needed
+      e.target.value = '';
+    };
+
+    reader.onerror = () => {
+      alert('Could not read the image file.');
+      e.target.value = '';
+    };
+
+    reader.readAsDataURL(file);
+  },
+  [section.id, section.images, updateSection]
+);
 
     const handleRemoveImage = useCallback(
       (indexToRemove: number) => {
