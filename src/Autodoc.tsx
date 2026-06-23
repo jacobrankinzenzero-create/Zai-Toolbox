@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import './index.css';
 import { useNavigate } from 'react-router-dom';
 import { Home } from 'lucide-react';
+import { generateAutodocDocx } from './lib/generateAutodocDocx';
 
 // --- TYPE DEFINITIONS ---
 interface TonePreset {
@@ -42,7 +43,7 @@ interface ModalConfig {
   inputs?: ModalInput[];
   confirmText: string;
   isDestructive: boolean;
-  action: (data: ExportData) => void;
+  action: (data: ExportData) => void | Promise<void>;
 }
 
 interface TableContext {
@@ -1516,84 +1517,27 @@ export default function App() {
     []
   );
 
-  const executeExport = useCallback(() => {
-    const clientName = exportData.clientName || 'Client Representative';
-    const orgName = exportData.orgName || 'Client Organisation';
-    const userEmail = exportData.userEmail || 'Zenzero Consultant';
-    const dateStr = new Date().toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+  const executeExport = useCallback(
+  async (metadataOverride?: ExportData) => {
+    try {
+      await generateAutodocDocx({
+        documentTitle,
+        sections,
+        metadata: metadataOverride || exportData,
+      });
+    } catch (error) {
+      console.error(error);
 
-    let htmlContent = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-      <meta charset='utf-8'>
-      <title>${documentTitle}</title>
-      <style>
-        body { font-family: 'Calibri', 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #2d3748; padding: 1in; }
-        .cover-container { text-align: left; height: 100%; margin-top: 1.5in; page-break-after: always; }
-        .cover-divider { border-top: 4px solid #ff8300; width: 100%; margin-bottom: 24px; }
-        .cover-brand { font-size: 14pt; font-weight: bold; color: #ff8300; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 40px; }
-        .cover-title { font-size: 32pt; font-weight: 800; color: #1a202c; line-height: 1.1; margin-bottom: 12px; }
-        .cover-subtitle { font-size: 16pt; color: #4a5568; margin-bottom: 60px; font-weight: 300; }
-        .cover-meta { margin-top: 2in; border-collapse: collapse; font-size: 11pt; color: #4a5568; }
-        .cover-meta td { padding: 4px 0; }
-        .cover-meta .label { font-weight: bold; width: 150px; color: #1a202c; }
-        h1.section-header { page-break-before: always; color: #1a202c; font-size: 20pt; font-weight: bold; margin-top: 36px; margin-bottom: 16px; border-bottom: 2px solid #ff8300; padding-bottom: 6px; }
-        h2 { color: #ff8300; font-size: 15pt; margin-top: 24px; margin-bottom: 12px; font-weight: bold; }
-        p { margin-bottom: 12px; font-size: 11pt; }
-        ul, ol { margin-bottom: 16px; padding-left: 20px; }
-        li { margin-bottom: 6px; font-size: 11pt; }
-        img { max-width: 100%; height: auto; margin: 20px 0; border: 1px solid #e2e8f0; border-radius: 4px; }
-        table { border-collapse: collapse; width: 100%; margin: 20px 0 12px 0; }
-        th, td { border: 1px solid #cbd5e0; padding: 10px; text-align: left; font-size: 11pt; }
-        th { background-color: #f7fafc; font-weight: bold; color: #1a202c; }
-      </style>
-      </head>
-      <body>
-        <div class="cover-container">
-          <div class="cover-brand">Zenzero</div>
-          <div class="cover-divider"></div>
-          <div class="cover-title">${documentTitle}</div>
-          <div class="cover-subtitle">Statement of Work (SOW) & Service Blueprint</div>
-          
-          <table class="cover-meta" border="0" cellspacing="0" cellpadding="0">
-            <tr><td class="label">Client Organisation:</td><td>${orgName}</td></tr>
-            <tr><td class="label">Client Contact:</td><td>${clientName}</td></tr>
-            <tr><td class="label">Prepared By:</td><td>${userEmail}</td></tr>
-            <tr><td class="label">Issue Date:</td><td>${dateStr}</td></tr>
-          </table>
-        </div>
-    `;
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Could not generate the Word document.';
 
-    sections.forEach((sec, idx) => {
-      htmlContent += `
-        <h1 class="section-header">${idx + 1}. ${sec.title}</h1>
-        <div>${sec.content}</div>
-      `;
-      if (sec.images && sec.images.length > 0) {
-        sec.images.forEach((img) => {
-          htmlContent += `<img src="${img}" alt="Attached Resource" />`;
-        });
-      }
-    });
-
-    htmlContent += `</body></html>`;
-
-    const blob = new Blob(['\ufeff', htmlContent], {
-      type: 'application/msword',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${documentTitle.replace(/\s+/g, '_')}_Autodoc.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [documentTitle, sections, exportData]);
+      alert(message);
+    }
+  },
+  [documentTitle, sections, exportData]
+);
 
   const handleExportClick = useCallback(() => {
     setModalData(exportData);
@@ -1633,10 +1577,10 @@ export default function App() {
       ],
       confirmText: 'Generate & Download',
       isDestructive: false,
-      action: (data) => {
+      action: async (data) => {
         setExportData(data);
-        setTimeout(() => executeExport(), 50);
         setModalConfig(null);
+        await executeExport(data);
       },
     });
   }, [executeExport, exportData]);
