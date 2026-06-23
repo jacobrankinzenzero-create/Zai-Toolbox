@@ -275,7 +275,9 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
 }
 
 function isBlockElement(node: ChildNode): boolean {
-  if (node.nodeType !== Node.ELEMENT_NODE) return false;
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return false;
+  }
 
   const tag = (node as HTMLElement).tagName.toLowerCase();
 
@@ -294,6 +296,10 @@ function isBlockElement(node: ChildNode): boolean {
     'h3',
     'blockquote',
   ].includes(tag);
+}
+
+function hasBlockChildren(element: Element): boolean {
+  return Array.from(element.childNodes).some(isBlockElement);
 }
 
 function htmlCellToWordXml(cell: Element): string {
