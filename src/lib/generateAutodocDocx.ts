@@ -389,6 +389,42 @@ function replaceMarkerParagraph(
     return xml.replace(markerParagraph, replacementXml);
 }
 
+function lockSectionTableLayout(documentXml: string, templateRowXml: string): string {
+  const rowIndex = documentXml.indexOf(templateRowXml);
+
+  if (rowIndex === -1) {
+    return documentXml;
+  }
+
+  const tableStart = documentXml.lastIndexOf('<w:tbl>', rowIndex);
+  const tableEnd = documentXml.indexOf('</w:tbl>', rowIndex);
+
+  if (tableStart === -1 || tableEnd === -1) {
+    return documentXml;
+  }
+
+  const tableXml = documentXml.slice(tableStart, tableEnd + '</w:tbl>'.length);
+
+  if (tableXml.includes('<w:tblLayout')) {
+    return documentXml;
+  }
+
+  const updatedTableXml = tableXml.replace(
+    '<w:tblPr>',
+    '<w:tblPr><w:tblLayout w:type="fixed"/>'
+  );
+
+  return (
+    documentXml.slice(0, tableStart) +
+    updatedTableXml +
+    documentXml.slice(tableEnd + '</w:tbl>'.length)
+  );
+}
+
+function softenLongWords(value: string, every = 18): string {
+  return value.replace(new RegExp(`([^\\s]{${every}})`, 'g'), '$1\u200B');
+}
+
 function replaceSectionTableRows(
   documentXml: string,
   sections: AutodocSection[]
@@ -419,6 +455,8 @@ function replaceSectionTableRows(
   }
 
   const templateRowXml = match[0];
+  
+  documentXml = lockSectionTableLayout(documentXml, templateRowXml);
 
   const generatedRowsXml = sections
     .map((section, index) => {
@@ -429,7 +467,7 @@ function replaceSectionTableRows(
       // Replace title marker only, preserving the styling of the title cell.
       rowXml = rowXml
         .split(titleMarker)
-        .join(escapeXml(`${index + 1}. ${title}`));
+        .join(escapeXml(`${index + 1}. ${softenLongWords(title)}`));
 
       // Replace only the paragraph containing the content marker.
       rowXml = replaceMarkerParagraph(
