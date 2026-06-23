@@ -1,6 +1,41 @@
 import PizZip from 'pizzip';
 import { saveAs } from 'file-saver';
 
+/**
+ * AUTODOC Word export generator.
+ *
+ * This file creates a real .docx file from a Word template stored in:
+ *
+ *   public/templates/autodoc-sow-template.docx
+ *
+ * It does this without paid Docxtemplater modules.
+ *
+ * How it works:
+ * 1. Loads the .docx template as a zip file.
+ * 2. Reads word/document.xml from inside the .docx.
+ * 3. Replaces simple metadata markers such as [[DOCUMENT_TITLE]].
+ * 4. Finds the Word table row containing [[SECTION_TITLE]] and [[SECTION_CONTENT]].
+ * 5. Duplicates that row once per AUTODOC section.
+ * 6. Converts rich editor HTML into Word XML.
+ * 7. Adds images into word/media and links them through document.xml.rels.
+ * 8. Saves the final .docx to the user's machine.
+ *
+ * Template requirements:
+ * - Metadata placeholders should use square markers:
+ *   [[DOCUMENT_TITLE]]
+ *   [[ORG_NAME]]
+ *   [[CLIENT_NAME]]
+ *   [[CLIENT_EMAIL]]
+ *   [[USER_EMAIL]]
+ *   [[ISSUE_DATE]]
+ *
+ * - The repeating section area should be a Word table row containing:
+ *   [[SECTION_TITLE]] in the left column
+ *   [[SECTION_CONTENT]] in the right column
+ *
+ * Both section markers must be in the same Word table row.
+ */
+
 type AutodocSection = {
   id?: string;
   title: string;
@@ -34,15 +69,27 @@ type ImageInfo = {
   heightPx: number;
 };
 
+type ImageRelationship = {
+  relationshipId: string;
+  target: string;
+  extension: string;
+  contentType: string;
+};
+
 type ImageBuildContext = {
   zip: PizZip;
-  relationships: string[];
+  relationships: ImageRelationship[];
   imageCounter: number;
 };
 
 const EMUS_PER_INCH = 914400;
 const PX_PER_INCH = 96;
 
+/**
+ * Escapes user/app text before placing it inside Word XML.
+ *
+ * Without this, characters like & or < could corrupt document.xml.
+ */
 function escapeXml(value: string): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -52,6 +99,9 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
+/**
+ * Makes the downloaded filename safe for Windows/macOS.
+ */
 function safeFileName(name: string): string {
   const cleaned = name
     .replace(/[^\w\- ]+/g, '')
@@ -61,10 +111,26 @@ function safeFileName(name: string): string {
   return cleaned || 'AUTODOC';
 }
 
+/**
+ * Adds zero-width spaces into very long unbroken words.
+ *
+ * This stops long section titles from forcing the left table column wider.
+ */
 function softenLongWords(value: string, every = 18): string {
   return value.replace(new RegExp(`([^\\s]{${every}})`, 'g'), '$1\u200B');
 }
 
+/**
+ * Replaces simple metadata markers in raw Word XML.
+ *
+ * Example:
+ * [[ORG_NAME]] becomes the client organisation name.
+ *
+ * This is used for:
+ * - word/document.xml
+ * - word/header*.xml
+ * - word/footer*.xml
+ */
 function replaceAllPlaceholders(
   xml: string,
   replacements: Record<string, string>
@@ -78,6 +144,17 @@ function replaceAllPlaceholders(
   return output;
 }
 
+/**
+ * Creates a Word "run" of text.
+ *
+ * A run is Word's smallest text unit. We use runs for normal text,
+ * bold text, italic text, links, coloured chevrons, etc.
+ *
+ * Word font sizes are in half-points:
+ * 20 = 10pt
+ * 22 = 11pt
+ * 24 = 12pt
+ */
 function runXml(
   text: string,
   options?: {
@@ -114,10 +191,19 @@ function runXml(
   return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 }
 
+/**
+ * Creates a Word line break inside the current paragraph.
+ */
 function breakXml(): string {
   return '<w:r><w:br/></w:r>';
 }
 
+/**
+ * Creates a Word paragraph.
+ *
+ * spacingAfter is measured in twentieths of a point.
+ * indentLeft and hanging are measured in twips.
+ */
 function paragraphXml(
   content: string,
   options?: {
@@ -159,6 +245,12 @@ function paragraphXml(
   return `<w:p>${pPr}${content}</w:p>`;
 }
 
+/**
+ * Creates a body paragraph prefixed with the Zenzero orange chevron.
+ *
+ * The hanging indent keeps wrapped lines aligned with the paragraph text,
+ * rather than under the chevron.
+ */
 function arrowParagraphXml(
   content: string,
   options?: { spacingAfter?: number }
@@ -173,6 +265,16 @@ function arrowParagraphXml(
   );
 }
 
+/**
+ * Converts inline HTML nodes into Word text runs.
+ *
+ * Supported inline HTML:
+ * - strong / b
+ * - em / i
+ * - u
+ * - a
+ * - br
+ */
 function inlineNodesToRuns(
   nodes: ChildNode[],
   inherited?: {
@@ -227,6 +329,53 @@ function inlineNodesToRuns(
   return xml;
 }
 
+/**
+ * Returns true if a node is a block-style HTML element.
+ *
+ * This matters because editor HTML often wraps real tables/lists inside divs.
+ * If we treat those divs as inline text, tables get flattened.
+ */
+function isBlockElement(node: ChildNode): boolean {
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return false;
+  }
+
+  const tag = (node as HTMLElement).tagName.toLowerCase();
+
+  return [
+    'p',
+    'div',
+    'ul',
+    'ol',
+    'li',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'h1',
+    'h2',
+    'h3',
+    'blockquote',
+  ].includes(tag);
+}
+
+/**
+ * Checks whether an element contains block children.
+ *
+ * Used to decide whether a div should be treated as:
+ * - one paragraph, or
+ * - a wrapper around paragraphs/lists/tables
+ */
+function hasBlockChildren(element: Element): boolean {
+  return Array.from(element.childNodes).some(isBlockElement);
+}
+
+/**
+ * Converts HTML lists into Word paragraphs with chevrons or numbers.
+ *
+ * This does not use Word's native numbering.xml system yet.
+ * Instead, it creates visually reliable list paragraphs.
+ */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
     (child) => child.tagName.toLowerCase() === 'li'
@@ -255,7 +404,7 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
 
       const currentItemXml = paragraphXml(
         runXml(marker, { color: 'FF8300', fontSizeHalfPoints: 22 }) +
-  inlineNodesToRuns(inlineContentNodes),
+          inlineNodesToRuns(inlineContentNodes),
         {
           indentLeft,
           hanging: 240,
@@ -274,34 +423,12 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
     .join('');
 }
 
-function isBlockElement(node: ChildNode): boolean {
-  if (node.nodeType !== Node.ELEMENT_NODE) {
-    return false;
-  }
-
-  const tag = (node as HTMLElement).tagName.toLowerCase();
-
-  return [
-    'p',
-    'div',
-    'ul',
-    'ol',
-    'li',
-    'table',
-    'thead',
-    'tbody',
-    'tr',
-    'h1',
-    'h2',
-    'h3',
-    'blockquote',
-  ].includes(tag);
-}
-
-function hasBlockChildren(element: Element): boolean {
-  return Array.from(element.childNodes).some(isBlockElement);
-}
-
+/**
+ * Converts the content inside an HTML table cell into Word XML.
+ *
+ * This is more robust than treating a cell as one plain text line.
+ * It allows table cells to contain paragraphs, lists, headings, and nested tables.
+ */
 function htmlCellToWordXml(cell: Element): string {
   const children = Array.from(cell.childNodes);
 
@@ -327,60 +454,7 @@ function htmlCellToWordXml(cell: Element): string {
       if (tag === 'div') {
         if (hasBlockChildren(el)) {
           return Array.from(el.childNodes)
-            .map((child) => {
-              if (child.nodeType === Node.TEXT_NODE) {
-                const text = child.textContent?.trim();
-                return text ? paragraphXml(runXml(text)) : '';
-              }
-
-              if (child.nodeType !== Node.ELEMENT_NODE) {
-                return '';
-              }
-
-              const childEl = child as HTMLElement;
-              const childTag = childEl.tagName.toLowerCase();
-
-              if (childTag === 'p' || childTag === 'div') {
-                return htmlCellToWordXml(childEl);
-              }
-
-              if (childTag === 'ul') {
-                return listXml(childEl, 0, false);
-              }
-
-              if (childTag === 'ol') {
-                return listXml(childEl, 0, true);
-              }
-
-              if (childTag === 'table') {
-                return tableXml(childEl as HTMLTableElement);
-              }
-
-              if (childTag === 'h1') {
-                return paragraphXml(
-                  inlineNodesToRuns(Array.from(childEl.childNodes)),
-                  { style: 'Heading1', spacingAfter: 120 }
-                );
-              }
-
-              if (childTag === 'h2') {
-                return paragraphXml(
-                  inlineNodesToRuns(Array.from(childEl.childNodes)),
-                  { style: 'Heading2', spacingAfter: 100 }
-                );
-              }
-
-              if (childTag === 'h3') {
-                return paragraphXml(
-                  inlineNodesToRuns(Array.from(childEl.childNodes)),
-                  { style: 'Heading3', spacingAfter: 80 }
-                );
-              }
-
-              return paragraphXml(
-                inlineNodesToRuns(Array.from(childEl.childNodes)) || runXml('')
-              );
-            })
+            .map((child) => htmlCellToWordXml(child as Element))
             .join('');
         }
 
@@ -434,8 +508,19 @@ function htmlCellToWordXml(cell: Element): string {
   return convertedChildren || paragraphXml(runXml(''));
 }
 
+/**
+ * Converts an HTML table into a real Word table.
+ *
+ * This is used for tables created in the AUTODOC rich text editor,
+ * such as RACI matrices.
+ *
+ * Current limitations:
+ * - No colspan / rowspan support yet.
+ * - No HTML cell colour preservation yet.
+ * - Columns are equal-width.
+ */
 function tableXml(table: HTMLTableElement): string {
-  const rows = Array.from(table.querySelectorAll('tr'));
+  const rows = Array.from(table.rows);
 
   if (rows.length === 0) {
     return '';
@@ -513,6 +598,12 @@ function tableXml(table: HTMLTableElement): string {
   `;
 }
 
+/**
+ * Converts the AUTODOC rich text editor HTML into Word XML.
+ *
+ * This is the main HTML-to-Word converter.
+ * Add new rich text support here if AUTODOC gains more editor features.
+ */
 function htmlToWordXml(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<div>${html || ''}</div>`, 'text/html');
@@ -616,6 +707,13 @@ function htmlToWordXml(html: string): string {
   return Array.from(root.childNodes).map(convertBlock).join('');
 }
 
+/**
+ * Reads a base64/data URL image and extracts useful information.
+ *
+ * Only data URLs are supported here:
+ * data:image/png;base64,...
+ * data:image/jpeg;base64,...
+ */
 function getImageInfo(dataUrl: string): Promise<ImageInfo | null> {
   return new Promise((resolve) => {
     const match = dataUrl.match(/^data:image\/(png|jpg|jpeg|gif);base64,(.+)$/i);
@@ -629,9 +727,7 @@ function getImageInfo(dataUrl: string): Promise<ImageInfo | null> {
     const base64 = match[2];
 
     const contentType =
-      extension === 'jpg'
-        ? 'image/jpeg'
-        : extension === 'jpeg'
+      extension === 'jpg' || extension === 'jpeg'
         ? 'image/jpeg'
         : extension === 'png'
         ? 'image/png'
@@ -665,13 +761,17 @@ function getImageInfo(dataUrl: string): Promise<ImageInfo | null> {
   });
 }
 
+/**
+ * Converts image pixel dimensions into Word EMUs.
+ *
+ * EMUs are the unit Word uses for drawing/image dimensions.
+ */
 function calculateImageSizeEmu(
   widthPx: number,
   heightPx: number,
   maxWidthInches = 4.6
 ): { widthEmu: number; heightEmu: number } {
   const maxWidthPx = maxWidthInches * PX_PER_INCH;
-
   const scale = widthPx > maxWidthPx ? maxWidthPx / widthPx : 1;
 
   const displayWidthPx = widthPx * scale;
@@ -683,6 +783,11 @@ function calculateImageSizeEmu(
   };
 }
 
+/**
+ * Returns the document relationships XML.
+ *
+ * If the template does not already have one, this creates a minimal file.
+ */
 function ensureDocumentRelationshipsFile(zip: PizZip): string {
   const existing = zip.file('word/_rels/document.xml.rels')?.asText();
 
@@ -695,6 +800,11 @@ function ensureDocumentRelationshipsFile(zip: PizZip): string {
     </Relationships>`;
 }
 
+/**
+ * Adds an image relationship to document.xml.rels.
+ *
+ * Word images need a relationship ID before document.xml can reference them.
+ */
 function addImageRelationship(
   relationshipsXml: string,
   relationshipId: string,
@@ -707,9 +817,17 @@ function addImageRelationship(
       Target="${target}"
     />`;
 
-  return relationshipsXml.replace('</Relationships>', `${relationshipXml}</Relationships>`);
+  return relationshipsXml.replace(
+    '</Relationships>',
+    `${relationshipXml}</Relationships>`
+  );
 }
 
+/**
+ * Ensures [Content_Types].xml knows about the image extension.
+ *
+ * Without this, Word may open the document but refuse to display the image.
+ */
 function ensureImageContentType(
   contentTypesXml: string,
   extension: string,
@@ -726,6 +844,12 @@ function ensureImageContentType(
   return contentTypesXml.replace('</Types>', `${defaultXml}</Types>`);
 }
 
+/**
+ * Creates the Word drawing XML that displays an image.
+ *
+ * The image itself lives in word/media.
+ * This XML points to it using a relationship ID such as rIdAutodocImage1.
+ */
 function imageDrawingXml(
   relationshipId: string,
   imageName: string,
@@ -785,6 +909,11 @@ function imageDrawingXml(
   `;
 }
 
+/**
+ * Converts section.images into Word image XML and adds each image to the docx zip.
+ *
+ * Images are placed after the section body text in the right-hand content cell.
+ */
 async function sectionImagesToWordXml(
   section: AutodocSection,
   context: ImageBuildContext
@@ -815,14 +944,12 @@ async function sectionImagesToWordXml(
 
     context.zip.file(mediaPath, imageInfo.base64, { base64: true });
 
-    context.relationships.push(
-      JSON.stringify({
-        relationshipId,
-        target: `media/${imageFileName}`,
-        extension: extensionForFile,
-        contentType: imageInfo.contentType,
-      })
-    );
+    context.relationships.push({
+      relationshipId,
+      target: `media/${imageFileName}`,
+      extension: extensionForFile,
+      contentType: imageInfo.contentType,
+    });
 
     const { widthEmu, heightEmu } = calculateImageSizeEmu(
       imageInfo.widthPx,
@@ -841,6 +968,15 @@ async function sectionImagesToWordXml(
   return imageXml;
 }
 
+/**
+ * Replaces the exact Word paragraph that contains a marker.
+ *
+ * This is used for [[SECTION_CONTENT]], because the replacement may contain:
+ * - multiple paragraphs
+ * - tables
+ * - images
+ * - lists
+ */
 function replaceMarkerParagraph(
   xml: string,
   marker: string,
@@ -859,6 +995,11 @@ function replaceMarkerParagraph(
   return xml.replace(markerParagraph, replacementXml);
 }
 
+/**
+ * Locks the section table layout.
+ *
+ * This helps stop Word expanding the left title column when titles are long.
+ */
 function lockSectionTableLayout(documentXml: string, templateRowXml: string): string {
   const rowIndex = documentXml.indexOf(templateRowXml);
 
@@ -894,6 +1035,21 @@ function lockSectionTableLayout(documentXml: string, templateRowXml: string): st
   );
 }
 
+/**
+ * Finds the template table row containing:
+ *
+ *   [[SECTION_TITLE]]
+ *   [[SECTION_CONTENT]]
+ *
+ * Then duplicates that row once per AUTODOC section.
+ *
+ * Left cell:
+ * - Keeps the Word template styling.
+ * - Replaces only the marker text.
+ *
+ * Right cell:
+ * - Replaces the marker paragraph with generated Word XML.
+ */
 async function replaceSectionTableRows(
   documentXml: string,
   sections: AutodocSection[],
@@ -936,10 +1092,13 @@ async function replaceSectionTableRows(
 
     let rowXml = templateRowXml;
 
+    // Replace the title marker without adding numbers.
+    // This keeps the left cell styling from the Word template.
     rowXml = rowXml
-  .split(titleMarker)
-  .join(escapeXml(softenLongWords(title)));
+      .split(titleMarker)
+      .join(escapeXml(softenLongWords(title)));
 
+    // Convert rich text HTML and then append any section images.
     const contentXml =
       htmlToWordXml(section.content || '') +
       (await sectionImagesToWordXml(section, context));
@@ -956,6 +1115,11 @@ async function replaceSectionTableRows(
   return documentXml.replace(templateRowXml, generatedRows.join(''));
 }
 
+/**
+ * Writes image relationships and content types into the docx zip.
+ *
+ * This is called after all image XML/media has been prepared.
+ */
 function applyImageRelationshipsAndContentTypes(
   zip: PizZip,
   context: ImageBuildContext
@@ -965,21 +1129,13 @@ function applyImageRelationshipsAndContentTypes(
   }
 
   let relationshipsXml = ensureDocumentRelationshipsFile(zip);
-
   let contentTypesXml = zip.file('[Content_Types].xml')?.asText();
 
   if (!contentTypesXml) {
     throw new Error('Could not find [Content_Types].xml inside the Word template.');
   }
 
-  context.relationships.forEach((relationshipJson) => {
-    const relationship = JSON.parse(relationshipJson) as {
-      relationshipId: string;
-      target: string;
-      extension: string;
-      contentType: string;
-    };
-
+  context.relationships.forEach((relationship) => {
     relationshipsXml = addImageRelationship(
       relationshipsXml,
       relationship.relationshipId,
@@ -997,6 +1153,11 @@ function applyImageRelationshipsAndContentTypes(
   zip.file('[Content_Types].xml', contentTypesXml);
 }
 
+/**
+ * Main export function called by AUTODOC.
+ *
+ * This is the only function Autodoc.tsx should import from this file.
+ */
 export async function generateAutodocDocx({
   documentTitle,
   sections,
@@ -1047,10 +1208,15 @@ export async function generateAutodocDocx({
   let documentXml = documentFile.asText();
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
-  documentXml = await replaceSectionTableRows(documentXml, sections, imageContext);
+  documentXml = await replaceSectionTableRows(
+    documentXml,
+    sections,
+    imageContext
+  );
 
   zip.file('word/document.xml', documentXml);
 
+  // Replace metadata placeholders in headers and footers too.
   const headerFooterFiles = zip.file(/^word\/(header|footer)\d+\.xml$/);
 
   headerFooterFiles.forEach((file) => {
