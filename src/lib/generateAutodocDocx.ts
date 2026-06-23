@@ -181,6 +181,57 @@ function inlineNodesToRuns(
   return xml;
 }
 
+function htmlCellToWordXml(cell: Element): string {
+  const children = Array.from(cell.childNodes);
+
+  const blockTags = ['p', 'div', 'ul', 'ol', 'table', 'h1', 'h2', 'h3'];
+
+  const hasBlockChildren = children.some((node) => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    return blockTags.includes((node as HTMLElement).tagName.toLowerCase());
+  });
+
+  if (!hasBlockChildren) {
+    const inlineContent = inlineNodesToRuns(children);
+    return paragraphXml(inlineContent || runXml(''));
+  }
+
+  return children
+    .map((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent?.trim();
+        return text ? paragraphXml(runXml(text)) : '';
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return '';
+      }
+
+      const el = node as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+
+      if (tag === 'p' || tag === 'div') {
+        return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)));
+      }
+
+      if (tag === 'ul') {
+        return listXml(el, 0, false);
+      }
+
+      if (tag === 'ol') {
+        return listXml(el, 0, true);
+      }
+
+      if (tag === 'br') {
+        return paragraphXml(runXml(''));
+      }
+
+      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)));
+    })
+    .join('');
+}
+
+
 function tableXml(table: HTMLTableElement): string {
   const rows = Array.from(table.querySelectorAll('tr'));
 
@@ -194,11 +245,7 @@ function tableXml(table: HTMLTableElement): string {
       const cellsXml = cells
         .map((cell) => {
           const isHeader = cell.tagName.toLowerCase() === 'th';
-
-          const cellContent =
-            inlineNodesToRuns(Array.from(cell.childNodes), {
-              bold: isHeader,
-            }) || runXml('');
+          const cellContent = htmlCellToWordXml(cell);
 
           return `
             <w:tc>
@@ -209,8 +256,9 @@ function tableXml(table: HTMLTableElement): string {
                   <w:bottom w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
                   <w:right w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
                 </w:tcBorders>
+                ${isHeader ? '<w:shd w:fill="F2F2F2"/>' : ''}
               </w:tcPr>
-              ${paragraphXml(cellContent)}
+              ${cellContent || paragraphXml(runXml(''))}
             </w:tc>
           `;
         })
@@ -224,6 +272,7 @@ function tableXml(table: HTMLTableElement): string {
     <w:tbl>
       <w:tblPr>
         <w:tblW w:w="0" w:type="auto"/>
+        <w:tblLayout w:type="fixed"/>
         <w:tblBorders>
           <w:top w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
           <w:left w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
