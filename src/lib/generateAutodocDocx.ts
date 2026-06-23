@@ -817,8 +817,8 @@ async function replaceSectionTableRows(
     let rowXml = templateRowXml;
 
     rowXml = rowXml
-      .split(titleMarker)
-      .join(escapeXml(`${index + 1}. ${softenLongWords(title)}`));
+  .split(titleMarker)
+  .join(escapeXml(softenLongWords(title)));
 
     const contentXml =
       htmlToWordXml(section.content || '') +
