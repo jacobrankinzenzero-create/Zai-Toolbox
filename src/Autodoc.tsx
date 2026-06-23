@@ -1372,9 +1372,21 @@ export default function App() {
     localStorage.setItem('autodoc_title', documentTitle);
   }, [documentTitle]);
 
-  useEffect(() => {
-    localStorage.setItem('autodoc_sections', JSON.stringify(sections));
-  }, [sections]);
+ useEffect(() => {
+  try {
+    const sectionsForStorage = sections.map((section) => ({
+      ...section,
+      images: [], // Do not persist base64 images to localStorage
+    }));
+
+    localStorage.setItem(
+      'autodoc_sections',
+      JSON.stringify(sectionsForStorage)
+    );
+  } catch (error) {
+    console.warn('Could not save AUTODOC sections to localStorage:', error);
+  }
+}, [sections]);
 
   useEffect(() => {
     localStorage.setItem('autodoc_export_metadata', JSON.stringify(exportData));
