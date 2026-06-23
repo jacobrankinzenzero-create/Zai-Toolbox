@@ -274,28 +274,35 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
     .join('');
 }
 
+function isBlockElement(node: ChildNode): boolean {
+  if (node.nodeType !== Node.ELEMENT_NODE) return false;
+
+  const tag = (node as HTMLElement).tagName.toLowerCase();
+
+  return [
+    'p',
+    'div',
+    'ul',
+    'ol',
+    'li',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'h1',
+    'h2',
+    'h3',
+    'blockquote',
+  ].includes(tag);
+}
+
 function htmlCellToWordXml(cell: Element): string {
   const children = Array.from(cell.childNodes);
-
-  const blockTags = ['p', 'div', 'ul', 'ol', 'table', 'h1', 'h2', 'h3'];
-
-  const hasBlockChildren = children.some((node) => {
-    if (node.nodeType !== Node.ELEMENT_NODE) return false;
-
-    return blockTags.includes((node as HTMLElement).tagName.toLowerCase());
-  });
-
-  if (!hasBlockChildren) {
-    const inlineContent = inlineNodesToRuns(children);
-
-    return paragraphXml(inlineContent || runXml(''));
-  }
 
   const convertedChildren = children
     .map((node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent?.trim();
-
         return text ? paragraphXml(runXml(text)) : '';
       }
 
@@ -306,9 +313,72 @@ function htmlCellToWordXml(cell: Element): string {
       const el = node as HTMLElement;
       const tag = el.tagName.toLowerCase();
 
-      if (tag === 'p' || tag === 'div') {
+      if (tag === 'p') {
         const content = inlineNodesToRuns(Array.from(el.childNodes));
+        return paragraphXml(content || runXml(''));
+      }
 
+      if (tag === 'div') {
+        if (hasBlockChildren(el)) {
+          return Array.from(el.childNodes)
+            .map((child) => {
+              if (child.nodeType === Node.TEXT_NODE) {
+                const text = child.textContent?.trim();
+                return text ? paragraphXml(runXml(text)) : '';
+              }
+
+              if (child.nodeType !== Node.ELEMENT_NODE) {
+                return '';
+              }
+
+              const childEl = child as HTMLElement;
+              const childTag = childEl.tagName.toLowerCase();
+
+              if (childTag === 'p' || childTag === 'div') {
+                return htmlCellToWordXml(childEl);
+              }
+
+              if (childTag === 'ul') {
+                return listXml(childEl, 0, false);
+              }
+
+              if (childTag === 'ol') {
+                return listXml(childEl, 0, true);
+              }
+
+              if (childTag === 'table') {
+                return tableXml(childEl as HTMLTableElement);
+              }
+
+              if (childTag === 'h1') {
+                return paragraphXml(
+                  inlineNodesToRuns(Array.from(childEl.childNodes)),
+                  { style: 'Heading1', spacingAfter: 120 }
+                );
+              }
+
+              if (childTag === 'h2') {
+                return paragraphXml(
+                  inlineNodesToRuns(Array.from(childEl.childNodes)),
+                  { style: 'Heading2', spacingAfter: 100 }
+                );
+              }
+
+              if (childTag === 'h3') {
+                return paragraphXml(
+                  inlineNodesToRuns(Array.from(childEl.childNodes)),
+                  { style: 'Heading3', spacingAfter: 80 }
+                );
+              }
+
+              return paragraphXml(
+                inlineNodesToRuns(Array.from(childEl.childNodes)) || runXml('')
+              );
+            })
+            .join('');
+        }
+
+        const content = inlineNodesToRuns(Array.from(el.childNodes));
         return paragraphXml(content || runXml(''));
       }
 
@@ -361,6 +431,26 @@ function htmlCellToWordXml(cell: Element): string {
 function tableXml(table: HTMLTableElement): string {
   const rows = Array.from(table.querySelectorAll('tr'));
 
+  if (rows.length === 0) {
+    return '';
+  }
+
+  const maxColumns = Math.max(
+    ...rows.map((row) => {
+      return Array.from(row.children).filter((child) => {
+        const tag = child.tagName.toLowerCase();
+        return tag === 'td' || tag === 'th';
+      }).length;
+    })
+  );
+
+  const tableWidthTwips = 7200;
+  const columnWidthTwips = Math.floor(tableWidthTwips / Math.max(maxColumns, 1));
+
+  const gridXml = Array.from({ length: maxColumns })
+    .map(() => `<w:gridCol w:w="${columnWidthTwips}"/>`)
+    .join('');
+
   const rowsXml = rows
     .map((row) => {
       const cells = Array.from(row.children).filter((child) => {
@@ -376,6 +466,7 @@ function tableXml(table: HTMLTableElement): string {
           return `
             <w:tc>
               <w:tcPr>
+                <w:tcW w:w="${columnWidthTwips}" w:type="dxa"/>
                 <w:tcBorders>
                   <w:top w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
                   <w:left w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
@@ -397,7 +488,7 @@ function tableXml(table: HTMLTableElement): string {
   return `
     <w:tbl>
       <w:tblPr>
-        <w:tblW w:w="0" w:type="auto"/>
+        <w:tblW w:w="${tableWidthTwips}" w:type="dxa"/>
         <w:tblLayout w:type="fixed"/>
         <w:tblBorders>
           <w:top w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
@@ -408,6 +499,9 @@ function tableXml(table: HTMLTableElement): string {
           <w:insideV w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>
         </w:tblBorders>
       </w:tblPr>
+      <w:tblGrid>
+        ${gridXml}
+      </w:tblGrid>
       ${rowsXml}
     </w:tbl>
   `;
@@ -459,11 +553,27 @@ function htmlToWordXml(html: string): string {
       });
     }
 
-    if (tag === 'p' || tag === 'div') {
+    if (tag === 'p') {
       const content = inlineNodesToRuns(Array.from(el.childNodes));
 
       if (!content.trim()) {
         return paragraphXml(runXml(''));
+      }
+
+      return arrowParagraphXml(content, {
+        spacingAfter: 120,
+      });
+    }
+
+    if (tag === 'div') {
+      if (hasBlockChildren(el)) {
+        return Array.from(el.childNodes).map(convertBlock).join('');
+      }
+
+      const content = inlineNodesToRuns(Array.from(el.childNodes));
+
+      if (!content.trim()) {
+        return '';
       }
 
       return arrowParagraphXml(content, {
@@ -488,6 +598,10 @@ function htmlToWordXml(html: string): string {
         indentLeft: 720,
         spacingAfter: 120,
       });
+    }
+
+    if (tag === 'br') {
+      return paragraphXml(runXml(''));
     }
 
     return Array.from(el.childNodes).map(convertBlock).join('');
