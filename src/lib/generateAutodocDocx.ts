@@ -372,21 +372,21 @@ function htmlToWordXml(html: string): string {
 }
 
 function replaceMarkerParagraph(
-  xml: string,
-  marker: string,
-  replacementXml: string
-): string {
-  const escapedMarker = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    xml: string,
+    marker: string,
+    replacementXml: string
+  ): string {
+    const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
 
-  const markerParagraphRegex = new RegExp(
-    `<w:p[\\s\\S]*?${escapedMarker}[\\s\\S]*?<\\/w:p>`
-  );
+    const markerParagraph = paragraphs.find((paragraph) =>
+      paragraph.includes(marker)
+    );
 
-  if (!markerParagraphRegex.test(xml)) {
-    throw new Error(`Could not find ${marker} in the Word template row.`);
-  }
+    if (!markerParagraph) {
+      throw new Error(`Could not find ${marker} in the Word template row.`);
+    }
 
-  return xml.replace(markerParagraphRegex, replacementXml);
+    return xml.replace(markerParagraph, replacementXml);
 }
 
 function replaceSectionTableRows(
@@ -396,14 +396,18 @@ function replaceSectionTableRows(
   const titleMarker = '[[SECTION_TITLE]]';
   const contentMarker = '[[SECTION_CONTENT]]';
 
+  const escapedTitleMarker = titleMarker.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    '\\$&'
+  );
+
+  const escapedContentMarker = contentMarker.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    '\\$&'
+  );
+
   const rowRegex = new RegExp(
-    `<w:tr[\\s\\S]*?${titleMarker.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      '\\$&'
-    )}[\\s\\S]*?${contentMarker.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      '\\$&'
-    )}[\\s\\S]*?<\\/w:tr>`
+    `<w:tr[\\s\\S]*?${escapedTitleMarker}[\\s\\S]*?${escapedContentMarker}[\\s\\S]*?<\\/w:tr>`
   );
 
   const match = documentXml.match(rowRegex);
@@ -422,13 +426,12 @@ function replaceSectionTableRows(
 
       let rowXml = templateRowXml;
 
-      // Keep the Word styling in the left cell.
-      // Only replace the marker text.
+      // Replace title marker only, preserving the styling of the title cell.
       rowXml = rowXml
         .split(titleMarker)
         .join(escapeXml(`${index + 1}. ${title}`));
 
-      // Replace the paragraph containing the content marker with full generated Word XML.
+      // Replace only the paragraph containing the content marker.
       rowXml = replaceMarkerParagraph(
         rowXml,
         contentMarker,
