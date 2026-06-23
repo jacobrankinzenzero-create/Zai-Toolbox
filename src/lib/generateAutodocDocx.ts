@@ -25,6 +25,24 @@ type GenerateAutodocDocxInput = {
   metadata: AutodocMetadata;
 };
 
+type ImageInfo = {
+  dataUrl: string;
+  extension: 'png' | 'jpg' | 'jpeg' | 'gif';
+  contentType: string;
+  base64: string;
+  widthPx: number;
+  heightPx: number;
+};
+
+type ImageBuildContext = {
+  zip: PizZip;
+  relationships: string[];
+  imageCounter: number;
+};
+
+const EMUS_PER_INCH = 914400;
+const PX_PER_INCH = 96;
+
 function escapeXml(value: string): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -41,6 +59,10 @@ function safeFileName(name: string): string {
     .trim();
 
   return cleaned || 'AUTODOC';
+}
+
+function softenLongWords(value: string, every = 18): string {
+  return value.replace(new RegExp(`([^\\s]{${every}})`, 'g'), '$1\u200B');
 }
 
 function replaceAllPlaceholders(
@@ -127,6 +149,17 @@ function paragraphXml(
   return `<w:p>${pPr}${content}</w:p>`;
 }
 
+function arrowParagraphXml(
+  content: string,
+  options?: { spacingAfter?: number }
+): string {
+  return paragraphXml(runXml('› ', { color: 'FF8300' }) + content, {
+    indentLeft: 360,
+    hanging: 240,
+    spacingAfter: options?.spacingAfter ?? 120,
+  });
+}
+
 function inlineNodesToRuns(
   nodes: ChildNode[],
   inherited?: {
@@ -181,6 +214,53 @@ function inlineNodesToRuns(
   return xml;
 }
 
+function listXml(list: HTMLElement, level = 0, ordered = false): string {
+  const items = Array.from(list.children).filter(
+    (child) => child.tagName.toLowerCase() === 'li'
+  );
+
+  return items
+    .map((item, index) => {
+      const childNodes = Array.from(item.childNodes);
+
+      const inlineContentNodes = childNodes.filter((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return true;
+
+        const tag = (node as HTMLElement).tagName.toLowerCase();
+        return tag !== 'ul' && tag !== 'ol';
+      });
+
+      const nestedLists = childNodes.filter((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return false;
+
+        const tag = (node as HTMLElement).tagName.toLowerCase();
+        return tag === 'ul' || tag === 'ol';
+      }) as HTMLElement[];
+
+      const marker = ordered ? `${index + 1}. ` : '› ';
+      const indentLeft = 360 + level * 360;
+
+      const currentItemXml = paragraphXml(
+        runXml(marker, { color: 'FF8300' }) +
+          inlineNodesToRuns(inlineContentNodes),
+        {
+          indentLeft,
+          hanging: 240,
+          spacingAfter: 80,
+        }
+      );
+
+      const nestedXml = nestedLists
+        .map((nested) =>
+          listXml(nested, level + 1, nested.tagName.toLowerCase() === 'ol')
+        )
+        .join('');
+
+      return currentItemXml + nestedXml;
+    })
+    .join('');
+}
+
 function htmlCellToWordXml(cell: Element): string {
   const children = Array.from(cell.childNodes);
 
@@ -188,18 +268,21 @@ function htmlCellToWordXml(cell: Element): string {
 
   const hasBlockChildren = children.some((node) => {
     if (node.nodeType !== Node.ELEMENT_NODE) return false;
+
     return blockTags.includes((node as HTMLElement).tagName.toLowerCase());
   });
 
   if (!hasBlockChildren) {
     const inlineContent = inlineNodesToRuns(children);
+
     return paragraphXml(inlineContent || runXml(''));
   }
 
-  return children
+  const convertedChildren = children
     .map((node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent?.trim();
+
         return text ? paragraphXml(runXml(text)) : '';
       }
 
@@ -211,7 +294,30 @@ function htmlCellToWordXml(cell: Element): string {
       const tag = el.tagName.toLowerCase();
 
       if (tag === 'p' || tag === 'div') {
-        return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)));
+        const content = inlineNodesToRuns(Array.from(el.childNodes));
+
+        return paragraphXml(content || runXml(''));
+      }
+
+      if (tag === 'h1') {
+        return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+          style: 'Heading1',
+          spacingAfter: 120,
+        });
+      }
+
+      if (tag === 'h2') {
+        return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+          style: 'Heading2',
+          spacingAfter: 100,
+        });
+      }
+
+      if (tag === 'h3') {
+        return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
+          style: 'Heading3',
+          spacingAfter: 80,
+        });
       }
 
       if (tag === 'ul') {
@@ -222,15 +328,22 @@ function htmlCellToWordXml(cell: Element): string {
         return listXml(el, 0, true);
       }
 
+      if (tag === 'table') {
+        return tableXml(el as HTMLTableElement);
+      }
+
       if (tag === 'br') {
         return paragraphXml(runXml(''));
       }
 
-      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)));
+      return paragraphXml(
+        inlineNodesToRuns(Array.from(el.childNodes)) || runXml('')
+      );
     })
     .join('');
-}
 
+  return convertedChildren || paragraphXml(runXml(''));
+}
 
 function tableXml(table: HTMLTableElement): string {
   const rows = Array.from(table.querySelectorAll('tr'));
@@ -287,52 +400,6 @@ function tableXml(table: HTMLTableElement): string {
   `;
 }
 
-function listXml(list: HTMLElement, level = 0, ordered = false): string {
-  const items = Array.from(list.children).filter(
-    (child) => child.tagName.toLowerCase() === 'li'
-  );
-
-  return items
-    .map((item, index) => {
-      const childNodes = Array.from(item.childNodes);
-
-      const inlineContentNodes = childNodes.filter((node) => {
-        if (node.nodeType !== Node.ELEMENT_NODE) return true;
-
-        const tag = (node as HTMLElement).tagName.toLowerCase();
-        return tag !== 'ul' && tag !== 'ol';
-      });
-
-      const nestedLists = childNodes.filter((node) => {
-        if (node.nodeType !== Node.ELEMENT_NODE) return false;
-
-        const tag = (node as HTMLElement).tagName.toLowerCase();
-        return tag === 'ul' || tag === 'ol';
-      }) as HTMLElement[];
-
-      const marker = ordered ? `${index + 1}. ` : '› ';
-      const indentLeft = 720 + level * 360;
-
-      const currentItemXml = paragraphXml(
-      runXml(marker, { color: 'F28C28' }) + inlineNodesToRuns(inlineContentNodes),
-      {
-        indentLeft,
-        hanging: 360,
-        spacingAfter: 80,
-      }
-    );
-
-      const nestedXml = nestedLists
-        .map((nested) =>
-          listXml(nested, level + 1, nested.tagName.toLowerCase() === 'ol')
-        )
-        .join('');
-
-      return currentItemXml + nestedXml;
-    })
-    .join('');
-}
-
 function htmlToWordXml(html: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<div>${html || ''}</div>`, 'text/html');
@@ -340,17 +407,13 @@ function htmlToWordXml(html: string): string {
 
   if (!root) return '';
 
-  const arrowRun = runXml('› ', {
-    color: 'FF8300',
-  });
-
   const convertBlock = (node: ChildNode): string => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent?.trim();
 
       if (!text) return '';
 
-      return paragraphXml(arrowRun + runXml(text), {
+      return arrowParagraphXml(runXml(text), {
         spacingAfter: 120,
       });
     }
@@ -363,21 +426,21 @@ function htmlToWordXml(html: string): string {
     const tag = el.tagName.toLowerCase();
 
     if (tag === 'h1') {
-      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
         style: 'Heading1',
         spacingAfter: 160,
       });
     }
 
     if (tag === 'h2') {
-      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
         style: 'Heading2',
         spacingAfter: 140,
       });
     }
 
     if (tag === 'h3') {
-      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
         style: 'Heading3',
         spacingAfter: 120,
       });
@@ -390,7 +453,7 @@ function htmlToWordXml(html: string): string {
         return paragraphXml(runXml(''));
       }
 
-      return paragraphXml(arrowRun + content, {
+      return arrowParagraphXml(content, {
         spacingAfter: 120,
       });
     }
@@ -408,7 +471,7 @@ function htmlToWordXml(html: string): string {
     }
 
     if (tag === 'blockquote') {
-      return paragraphXml(arrowRun + inlineNodesToRuns(Array.from(el.childNodes)), {
+      return paragraphXml(inlineNodesToRuns(Array.from(el.childNodes)), {
         indentLeft: 720,
         spacingAfter: 120,
       });
@@ -420,22 +483,247 @@ function htmlToWordXml(html: string): string {
   return Array.from(root.childNodes).map(convertBlock).join('');
 }
 
-function replaceMarkerParagraph(
-    xml: string,
-    marker: string,
-    replacementXml: string
-  ): string {
-    const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+function getImageInfo(dataUrl: string): Promise<ImageInfo | null> {
+  return new Promise((resolve) => {
+    const match = dataUrl.match(/^data:image\/(png|jpg|jpeg|gif);base64,(.+)$/i);
 
-    const markerParagraph = paragraphs.find((paragraph) =>
-      paragraph.includes(marker)
-    );
-
-    if (!markerParagraph) {
-      throw new Error(`Could not find ${marker} in the Word template row.`);
+    if (!match) {
+      resolve(null);
+      return;
     }
 
-    return xml.replace(markerParagraph, replacementXml);
+    const extension = match[1].toLowerCase() as 'png' | 'jpg' | 'jpeg' | 'gif';
+    const base64 = match[2];
+
+    const contentType =
+      extension === 'jpg'
+        ? 'image/jpeg'
+        : extension === 'jpeg'
+        ? 'image/jpeg'
+        : extension === 'png'
+        ? 'image/png'
+        : 'image/gif';
+
+    const img = new Image();
+
+    img.onload = () => {
+      resolve({
+        dataUrl,
+        extension,
+        contentType,
+        base64,
+        widthPx: img.naturalWidth || 800,
+        heightPx: img.naturalHeight || 450,
+      });
+    };
+
+    img.onerror = () => {
+      resolve({
+        dataUrl,
+        extension,
+        contentType,
+        base64,
+        widthPx: 800,
+        heightPx: 450,
+      });
+    };
+
+    img.src = dataUrl;
+  });
+}
+
+function calculateImageSizeEmu(
+  widthPx: number,
+  heightPx: number,
+  maxWidthInches = 4.6
+): { widthEmu: number; heightEmu: number } {
+  const maxWidthPx = maxWidthInches * PX_PER_INCH;
+
+  const scale = widthPx > maxWidthPx ? maxWidthPx / widthPx : 1;
+
+  const displayWidthPx = widthPx * scale;
+  const displayHeightPx = heightPx * scale;
+
+  return {
+    widthEmu: Math.round((displayWidthPx / PX_PER_INCH) * EMUS_PER_INCH),
+    heightEmu: Math.round((displayHeightPx / PX_PER_INCH) * EMUS_PER_INCH),
+  };
+}
+
+function ensureDocumentRelationshipsFile(zip: PizZip): string {
+  const existing = zip.file('word/_rels/document.xml.rels')?.asText();
+
+  if (existing) {
+    return existing;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    </Relationships>`;
+}
+
+function addImageRelationship(
+  relationshipsXml: string,
+  relationshipId: string,
+  target: string
+): string {
+  const relationshipXml = `
+    <Relationship
+      Id="${relationshipId}"
+      Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+      Target="${target}"
+    />`;
+
+  return relationshipsXml.replace('</Relationships>', `${relationshipXml}</Relationships>`);
+}
+
+function ensureImageContentType(
+  contentTypesXml: string,
+  extension: string,
+  contentType: string
+): string {
+  const normalizedExtension = extension === 'jpg' ? 'jpeg' : extension;
+
+  if (contentTypesXml.includes(`Extension="${normalizedExtension}"`)) {
+    return contentTypesXml;
+  }
+
+  const defaultXml = `<Default Extension="${normalizedExtension}" ContentType="${contentType}"/>`;
+
+  return contentTypesXml.replace('</Types>', `${defaultXml}</Types>`);
+}
+
+function imageDrawingXml(
+  relationshipId: string,
+  imageName: string,
+  widthEmu: number,
+  heightEmu: number
+): string {
+  const docPrId = Math.floor(Math.random() * 1000000) + 1;
+
+  return `
+    <w:p>
+      <w:pPr>
+        <w:spacing w:before="120" w:after="160"/>
+      </w:pPr>
+      <w:r>
+        <w:drawing>
+          <wp:inline distT="0" distB="0" distL="0" distR="0"
+            xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+            <wp:extent cx="${widthEmu}" cy="${heightEmu}"/>
+            <wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:docPr id="${docPrId}" name="${escapeXml(imageName)}"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="${escapeXml(imageName)}"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip
+                      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                      r:embed="${relationshipId}"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="${widthEmu}" cy="${heightEmu}"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect">
+                      <a:avLst/>
+                    </a:prstGeom>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+    </w:p>
+  `;
+}
+
+async function sectionImagesToWordXml(
+  section: AutodocSection,
+  context: ImageBuildContext
+): Promise<string> {
+  const images = section.images || [];
+
+  if (images.length === 0) {
+    return '';
+  }
+
+  let imageXml = '';
+
+  for (const imageDataUrl of images) {
+    const imageInfo = await getImageInfo(imageDataUrl);
+
+    if (!imageInfo) {
+      continue;
+    }
+
+    context.imageCounter += 1;
+
+    const extensionForFile =
+      imageInfo.extension === 'jpg' ? 'jpeg' : imageInfo.extension;
+
+    const imageFileName = `autodoc-image-${context.imageCounter}.${extensionForFile}`;
+    const relationshipId = `rIdAutodocImage${context.imageCounter}`;
+    const mediaPath = `word/media/${imageFileName}`;
+
+    context.zip.file(mediaPath, imageInfo.base64, { base64: true });
+
+    context.relationships.push(
+      JSON.stringify({
+        relationshipId,
+        target: `media/${imageFileName}`,
+        extension: extensionForFile,
+        contentType: imageInfo.contentType,
+      })
+    );
+
+    const { widthEmu, heightEmu } = calculateImageSizeEmu(
+      imageInfo.widthPx,
+      imageInfo.heightPx,
+      4.6
+    );
+
+    imageXml += imageDrawingXml(
+      relationshipId,
+      imageFileName,
+      widthEmu,
+      heightEmu
+    );
+  }
+
+  return imageXml;
+}
+
+function replaceMarkerParagraph(
+  xml: string,
+  marker: string,
+  replacementXml: string
+): string {
+  const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+
+  const markerParagraph = paragraphs.find((paragraph) =>
+    paragraph.includes(marker)
+  );
+
+  if (!markerParagraph) {
+    throw new Error(`Could not find ${marker} in the Word template row.`);
+  }
+
+  return xml.replace(markerParagraph, replacementXml);
 }
 
 function lockSectionTableLayout(documentXml: string, templateRowXml: string): string {
@@ -452,13 +740,16 @@ function lockSectionTableLayout(documentXml: string, templateRowXml: string): st
     return documentXml;
   }
 
-  const tableXml = documentXml.slice(tableStart, tableEnd + '</w:tbl>'.length);
+  const tableXmlContent = documentXml.slice(
+    tableStart,
+    tableEnd + '</w:tbl>'.length
+  );
 
-  if (tableXml.includes('<w:tblLayout')) {
+  if (tableXmlContent.includes('<w:tblLayout')) {
     return documentXml;
   }
 
-  const updatedTableXml = tableXml.replace(
+  const updatedTableXml = tableXmlContent.replace(
     '<w:tblPr>',
     '<w:tblPr><w:tblLayout w:type="fixed"/>'
   );
@@ -470,14 +761,11 @@ function lockSectionTableLayout(documentXml: string, templateRowXml: string): st
   );
 }
 
-function softenLongWords(value: string, every = 18): string {
-  return value.replace(new RegExp(`([^\\s]{${every}})`, 'g'), '$1\u200B');
-}
-
-function replaceSectionTableRows(
+async function replaceSectionTableRows(
   documentXml: string,
-  sections: AutodocSection[]
-): string {
+  sections: AutodocSection[],
+  context: ImageBuildContext
+): Promise<string> {
   const titleMarker = '[[SECTION_TITLE]]';
   const contentMarker = '[[SECTION_CONTENT]]';
 
@@ -504,32 +792,76 @@ function replaceSectionTableRows(
   }
 
   const templateRowXml = match[0];
-  
+
   documentXml = lockSectionTableLayout(documentXml, templateRowXml);
 
-  const generatedRowsXml = sections
-    .map((section, index) => {
-      const title = section.title || `Section ${index + 1}`;
+  const generatedRows: string[] = [];
 
-      let rowXml = templateRowXml;
+  for (let index = 0; index < sections.length; index += 1) {
+    const section = sections[index];
+    const title = section.title || `Section ${index + 1}`;
 
-      // Replace title marker only, preserving the styling of the title cell.
-      rowXml = rowXml
-        .split(titleMarker)
-        .join(escapeXml(`${index + 1}. ${softenLongWords(title)}`));
+    let rowXml = templateRowXml;
 
-      // Replace only the paragraph containing the content marker.
-      rowXml = replaceMarkerParagraph(
-        rowXml,
-        contentMarker,
-        htmlToWordXml(section.content || '')
-      );
+    rowXml = rowXml
+      .split(titleMarker)
+      .join(escapeXml(`${index + 1}. ${softenLongWords(title)}`));
 
-      return rowXml;
-    })
-    .join('');
+    const contentXml =
+      htmlToWordXml(section.content || '') +
+      (await sectionImagesToWordXml(section, context));
 
-  return documentXml.replace(templateRowXml, generatedRowsXml);
+    rowXml = replaceMarkerParagraph(
+      rowXml,
+      contentMarker,
+      contentXml || paragraphXml(runXml(''))
+    );
+
+    generatedRows.push(rowXml);
+  }
+
+  return documentXml.replace(templateRowXml, generatedRows.join(''));
+}
+
+function applyImageRelationshipsAndContentTypes(
+  zip: PizZip,
+  context: ImageBuildContext
+): void {
+  if (context.relationships.length === 0) {
+    return;
+  }
+
+  let relationshipsXml = ensureDocumentRelationshipsFile(zip);
+
+  let contentTypesXml = zip.file('[Content_Types].xml')?.asText();
+
+  if (!contentTypesXml) {
+    throw new Error('Could not find [Content_Types].xml inside the Word template.');
+  }
+
+  context.relationships.forEach((relationshipJson) => {
+    const relationship = JSON.parse(relationshipJson) as {
+      relationshipId: string;
+      target: string;
+      extension: string;
+      contentType: string;
+    };
+
+    relationshipsXml = addImageRelationship(
+      relationshipsXml,
+      relationship.relationshipId,
+      relationship.target
+    );
+
+    contentTypesXml = ensureImageContentType(
+      contentTypesXml!,
+      relationship.extension,
+      relationship.contentType
+    );
+  });
+
+  zip.file('word/_rels/document.xml.rels', relationshipsXml);
+  zip.file('[Content_Types].xml', contentTypesXml);
 }
 
 export async function generateAutodocDocx({
@@ -537,7 +869,9 @@ export async function generateAutodocDocx({
   sections,
   metadata,
 }: GenerateAutodocDocxInput): Promise<void> {
-  const response = await fetch('/templates/autodoc-sow-template.docx');
+  const response = await fetch(
+    `/templates/autodoc-sow-template.docx?v=${Date.now()}`
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -563,18 +897,24 @@ export async function generateAutodocDocx({
   const title = documentTitle || 'Untitled Statement of Work';
 
   const replacements: Record<string, string> = {
-  DOCUMENT_TITLE: title,
-  ORG_NAME: metadata.orgName || 'Client Organisation',
-  CLIENT_NAME: metadata.clientName || 'Client Representative',
-  CLIENT_EMAIL: metadata.clientEmail || '',
-  USER_EMAIL: metadata.userEmail || 'Zenzero Consultant',
-  ISSUE_DATE: issueDate,
-};
+    DOCUMENT_TITLE: title,
+    ORG_NAME: metadata.orgName || 'Client Organisation',
+    CLIENT_NAME: metadata.clientName || 'Client Representative',
+    CLIENT_EMAIL: metadata.clientEmail || '',
+    USER_EMAIL: metadata.userEmail || 'Zenzero Consultant',
+    ISSUE_DATE: issueDate,
+  };
+
+  const imageContext: ImageBuildContext = {
+    zip,
+    relationships: [],
+    imageCounter: 0,
+  };
 
   let documentXml = documentFile.asText();
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
-  documentXml = replaceSectionTableRows(documentXml, sections);
+  documentXml = await replaceSectionTableRows(documentXml, sections, imageContext);
 
   zip.file('word/document.xml', documentXml);
 
@@ -585,6 +925,8 @@ export async function generateAutodocDocx({
     const updatedXml = replaceAllPlaceholders(originalXml, replacements);
     zip.file(file.name, updatedXml);
   });
+
+  applyImageRelationshipsAndContentTypes(zip, imageContext);
 
   const outputBlob = zip.generate({
     type: 'blob',
