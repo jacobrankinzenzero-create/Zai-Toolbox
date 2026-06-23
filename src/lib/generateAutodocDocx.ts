@@ -50,7 +50,7 @@ function replaceAllPlaceholders(
   let output = xml;
 
   Object.entries(replacements).forEach(([key, value]) => {
-    output = output.split(`{${key}}`).join(escapeXml(value));
+    output = output.split(`[[${key}]]`).join(escapeXml(value));
   });
 
   return output;
@@ -470,13 +470,13 @@ export async function generateAutodocDocx({
   const title = documentTitle || 'Untitled Statement of Work';
 
   const replacements: Record<string, string> = {
-    documentTitle: title,
-    orgName: metadata.orgName || 'Client Organisation',
-    clientName: metadata.clientName || 'Client Representative',
-    clientEmail: metadata.clientEmail || '',
-    userEmail: metadata.userEmail || 'Zenzero Consultant',
-    issueDate,
-  };
+  DOCUMENT_TITLE: title,
+  ORG_NAME: metadata.orgName || 'Client Organisation',
+  CLIENT_NAME: metadata.clientName || 'Client Representative',
+  CLIENT_EMAIL: metadata.clientEmail || '',
+  USER_EMAIL: metadata.userEmail || 'Zenzero Consultant',
+  ISSUE_DATE: issueDate,
+};
 
   let documentXml = documentFile.asText();
 
