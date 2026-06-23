@@ -85,12 +85,17 @@ function runXml(
     italic?: boolean;
     underline?: boolean;
     color?: string;
+    fontSizeHalfPoints?: number;
   }
 ): string {
   if (!text) return '';
 
   const hasFormatting =
-    options?.bold || options?.italic || options?.underline || options?.color;
+    options?.bold ||
+    options?.italic ||
+    options?.underline ||
+    options?.color ||
+    options?.fontSizeHalfPoints;
 
   const rPr = hasFormatting
     ? `<w:rPr>
@@ -98,6 +103,11 @@ function runXml(
         ${options?.italic ? '<w:i/>' : ''}
         ${options?.underline ? '<w:u w:val="single"/>' : ''}
         ${options?.color ? `<w:color w:val="${options.color}"/>` : ''}
+        ${
+          options?.fontSizeHalfPoints
+            ? `<w:sz w:val="${options.fontSizeHalfPoints}"/>`
+            : ''
+        }
       </w:rPr>`
     : '';
 
@@ -153,11 +163,14 @@ function arrowParagraphXml(
   content: string,
   options?: { spacingAfter?: number }
 ): string {
-  return paragraphXml(runXml('› ', { color: 'FF8300' }) + content, {
-    indentLeft: 360,
-    hanging: 240,
-    spacingAfter: options?.spacingAfter ?? 120,
-  });
+  return paragraphXml(
+    runXml('› ', { color: 'FF8300', fontSizeHalfPoints: 22 }) + content,
+    {
+      indentLeft: 360,
+      hanging: 240,
+      spacingAfter: options?.spacingAfter ?? 120,
+    }
+  );
 }
 
 function inlineNodesToRuns(
@@ -241,8 +254,8 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
       const indentLeft = 360 + level * 360;
 
       const currentItemXml = paragraphXml(
-        runXml(marker, { color: 'FF8300' }) +
-          inlineNodesToRuns(inlineContentNodes),
+        runXml(marker, { color: 'FF8300', fontSizeHalfPoints: 22 }) +
+  inlineNodesToRuns(inlineContentNodes),
         {
           indentLeft,
           hanging: 240,
