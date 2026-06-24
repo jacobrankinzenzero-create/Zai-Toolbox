@@ -4,9 +4,8 @@ import { saveAs } from 'file-saver';
 
 const BODY_FONT_SIZE = 22;
 
-const AUTODOC_BODY_BULLET_1_STYLE = 'AUTODOCBodyBullet1';
-const AUTODOC_BODY_BULLET_2_STYLE = 'AUTODOCBodyBullet2';
-
+const AUTODOC_BULLET_LEVEL_1_STYLE = 'AUTODOCBulletLevel1';
+const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletLevel2';
 const NUMBERED_LIST_LEFT_INDENT = 1080;
 const NUMBERED_LIST_HANGING_INDENT = 360;
 const NUMBERED_LIST_LEVEL_STEP = 360;
@@ -102,13 +101,6 @@ const CHEVRON_MUTED = 'D8E7E7';
 // 22 = 11pt body text.
 // 20 = 10pt, roughly 90% of 11pt.
 const CHEVRON_FONT_SIZE = 20;
-
-// Internal Word style IDs from the .docx template.
-// These styles must exist in word/styles.xml inside autodoc-sow-template.docx.
-// They let Word render the real template bullets/chevrons instead of us
-// manually inserting a chevron character.
-const AUTODOC_BULLET_LEVEL_1_STYLE = 'AUTODOCBulletLevel1';
-const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletlevel2';
 
 /**
  * Escapes user/app text before placing it inside Word XML.
@@ -452,6 +444,19 @@ function hasBlockChildren(element: Element): boolean {
  * This pulls out the visible item text while ignoring nested lists,
  * which are handled separately.
  */
+/**
+ * Extracts visible text/runs from a Tiptap list item.
+ *
+ * Tiptap commonly outputs:
+ *
+ * <li>
+ *   <p>Item text</p>
+ *   <ul>Nested item</ul>
+ * </li>
+ *
+ * This pulls out the visible item text while ignoring nested lists,
+ * which are handled separately.
+ */
 function listItemContentToRuns(item: Element): string {
   const childNodes = Array.from(item.childNodes);
 
@@ -494,41 +499,13 @@ function listItemContentToRuns(item: Element): string {
 /**
  * Converts HTML lists into Word paragraphs.
  *
- * Unordered lists:
- * - Use the secondary AUTODOC bullet style from the Word template.
+ * Important:
+ * - Unordered/bullet lists do NOT manually render chevrons.
+ * - They apply the Word template paragraph style instead.
+ * - The template is responsible for the actual bullet/chevron appearance.
  *
- * Ordered lists:
- * - Render as black manual numbers.
- * - Indent to match the secondary list level.
- */
-/**
- * Extracts visible text/runs from a Tiptap list item.
- *
- * Tiptap commonly outputs:
- *
- * <li>
- *   <p>Item text</p>
- *   <ul>Nested item</ul>
- * </li>
- *
- * This pulls out the visible item text while ignoring nested lists,
- * which are handled separately.
- */
-/**
- * Converts HTML lists into Word paragraphs.
- *
- * This version intentionally uses manual list markers rather than relying
- * on Word template list styles, because it is more reliable for the current
- * DIY exporter.
- *
- * Unordered lists:
- * - Use a chevron marker.
- * - First list level is muted grey.
- * - Deeper list levels are also muted grey.
- *
- * Ordered lists:
- * - Use black manual numbering.
- * - Indented to match the secondary list level.
+ * Ordered lists are still rendered manually as black numbers for now,
+ * but they use the same secondary-level indentation.
  */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
@@ -567,19 +544,17 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
           }
         );
       } else {
-        const bulletIndentLeft = 1080 + level * 360;
-
-        currentItemXml = paragraphXml(
-          runXml('› ', {
-            color: level === 0 ? CHEVRON_MUTED : CHEVRON_MUTED,
-            fontSizeHalfPoints: CHEVRON_FONT_SIZE,
-          }) + itemContent,
-          {
-            spacingAfter: 80,
-            indentLeft: bulletIndentLeft,
-            hanging: 360,
-          }
-        );
+        /**
+         * Use the Word template's secondary bullet style.
+         *
+         * If this does not show the correct chevron/bullet, the issue is not
+         * the exporter logic — it means AUTODOC_BODY_BULLET_2_STYLE does not
+         * match the internal Word style ID in the template.
+         */
+        currentItemXml = paragraphXml(itemContent || runXml(''), {
+          style: AUTODOC_BULLET_LEVEL_2_STYLE,
+          spacingAfter: 80,
+        });
       }
 
       const nestedXml = nestedLists
