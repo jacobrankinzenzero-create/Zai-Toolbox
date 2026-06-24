@@ -392,6 +392,17 @@ function hasBlockChildren(element: Element): boolean {
  * If you later create a Word numbered-list style in the template, this can
  * be updated to apply that style instead.
  */
+/**
+ * Converts HTML lists into Word paragraphs.
+ *
+ * Unordered lists:
+ * - Use AUTODOCBodyBullet2 from the Word template.
+ * - This means user-created bullet lists appear as the secondary/grey list level.
+ *
+ * Ordered lists:
+ * - Use black manual numbering.
+ * - Indented to visually match the secondary list level.
+ */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
     (child) => child.tagName.toLowerCase() === 'li'
@@ -415,28 +426,36 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
         return tag === 'ul' || tag === 'ol';
       }) as HTMLElement[];
 
-      const itemContent =
-        inlineNodesToRuns(inlineContentNodes) || runXml('');
+      const itemContent = inlineNodesToRuns(inlineContentNodes);
 
       let currentItemXml = '';
 
       if (ordered) {
-        // Numbered lists remain simple black numbers.
-        // They intentionally do not use the chevron styles.
+        /**
+         * Ordered lists should sit at the same visual indentation as the
+         * secondary grey bullet list.
+         *
+         * 720 twips gives the first user-created numbered list one level
+         * deeper than the normal body paragraph.
+         */
+        const numberedIndentLeft = 720 + level * 360;
+
         currentItemXml = paragraphXml(
           runXml(`${index + 1}. `, {
             color: BODY_TEXT_COLOR,
             fontSizeHalfPoints: BODY_FONT_SIZE,
           }) + itemContent,
           {
-            indentLeft: 720 + level * 360,
-            hanging: 240,
             spacingAfter: 80,
+            indentLeft: numberedIndentLeft,
+            hanging: 240,
           }
         );
       } else {
-        // Any bullet list the user creates in the editor starts visually
-        // as the template's secondary/level-2 bullet style.
+        /**
+         * User-created bullet lists use the secondary bullet style from the
+         * Word template, not a manually rendered chevron character.
+         */
         currentItemXml = styledBodyParagraphXml(itemContent, 2, {
           spacingAfter: 80,
         });
@@ -1067,6 +1086,51 @@ function lockSectionTableLayout(documentXml: string, templateRowXml: string): st
 }
 
 /**
+ * Forces the duplicated AUTODOC section row cells to align top-left.
+ *
+ * This is useful because Word table cells can retain vertical centre alignment
+ * even when the template visually appears to have been changed.
+ *
+ * We apply this to the template row before replacing [[SECTION_TITLE]]
+ * and [[SECTION_CONTENT]].
+ */
+function forceTableRowCellsTopLeft(rowXml: string): string {
+  return rowXml.replace(/<w:tc>[\s\S]*?<\/w:tc>/g, (cellXml) => {
+    let updatedCellXml = cellXml;
+
+    // Force vertical alignment to top.
+    if (updatedCellXml.includes('<w:tcPr>')) {
+      if (updatedCellXml.includes('<w:vAlign')) {
+        updatedCellXml = updatedCellXml.replace(
+          /<w:vAlign w:val="[^"]*"\/>/g,
+          '<w:vAlign w:val="top"/>'
+        );
+      } else {
+        updatedCellXml = updatedCellXml.replace(
+          '<w:tcPr>',
+          '<w:tcPr><w:vAlign w:val="top"/>'
+        );
+      }
+    } else {
+      updatedCellXml = updatedCellXml.replace(
+        '<w:tc>',
+        '<w:tc><w:tcPr><w:vAlign w:val="top"/></w:tcPr>'
+      );
+    }
+
+    // Force any existing paragraph alignment in the template row to left.
+    // This happens before generated content/images are inserted, so it will not
+    // affect image centering added later by imageDrawingXml().
+    updatedCellXml = updatedCellXml.replace(
+      /<w:jc w:val="[^"]*"\/>/g,
+      '<w:jc w:val="left"/>'
+    );
+
+    return updatedCellXml;
+  });
+}
+
+/**
  * Finds the template table row containing:
  *
  *   [[SECTION_TITLE]]
@@ -1122,6 +1186,8 @@ async function replaceSectionTableRows(
     const title = section.title || `Section ${index + 1}`;
 
     let rowXml = templateRowXml;
+
+    rowXml = forceTableRowCellsTopLeft(rowXml);
 
     // Replace the title marker without adding numbers.
     // This keeps the left cell styling from the Word template.
