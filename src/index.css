@@ -49,3 +49,108 @@
   position: absolute;
   z-index: 2;
 }
+/* AUTODOC Tiptap editor visual styling
+   ------------------------------------------------------------
+   These styles are only for the in-app editing experience.
+   The Word export does NOT use these visual styles directly.
+   The export reads the underlying HTML structure instead:
+   ul / ol / li / table / tr / td / th.
+*/
+
+.autodoc-tiptap-editor .ProseMirror {
+  min-height: 180px;
+  outline: none;
+  padding: 12px;
+  color: #374151;
+}
+
+/* Paragraph spacing inside the editor */
+.autodoc-tiptap-editor .ProseMirror p {
+  margin: 0 0 0.6rem;
+}
+
+/* Make bullet and numbered lists visible in the editor */
+.autodoc-tiptap-editor .ProseMirror ul {
+  list-style-type: disc !important;
+  padding-left: 1.6rem !important;
+  margin: 0.5rem 0 0.75rem !important;
+}
+
+.autodoc-tiptap-editor .ProseMirror ol {
+  list-style-type: decimal !important;
+  padding-left: 1.6rem !important;
+  margin: 0.5rem 0 0.75rem !important;
+}
+
+.autodoc-tiptap-editor .ProseMirror li {
+  display: list-item !important;
+  margin: 0.25rem 0;
+  padding-left: 0.15rem;
+}
+
+/* Nested lists need their own visible styles */
+.autodoc-tiptap-editor .ProseMirror ul ul {
+  list-style-type: circle !important;
+  margin-top: 0.25rem !important;
+}
+
+.autodoc-tiptap-editor .ProseMirror ul ul ul {
+  list-style-type: square !important;
+}
+
+.autodoc-tiptap-editor .ProseMirror ol ol {
+  list-style-type: lower-alpha !important;
+  margin-top: 0.25rem !important;
+}
+
+.autodoc-tiptap-editor .ProseMirror ol ol ol {
+  list-style-type: lower-roman !important;
+}
+
+/* Make editor tables obvious and editable */
+.autodoc-tiptap-editor .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0.75rem 0;
+  overflow: hidden;
+}
+
+.autodoc-tiptap-editor .ProseMirror th,
+.autodoc-tiptap-editor .ProseMirror td {
+  border: 1px solid #9ca3af;
+  padding: 0.45rem 0.55rem;
+  vertical-align: top;
+  min-width: 3rem;
+  position: relative;
+}
+
+.autodoc-tiptap-editor .ProseMirror th {
+  background-color: #f3f4f6;
+  font-weight: 700;
+}
+
+.autodoc-tiptap-editor .ProseMirror td {
+  background-color: #ffffff;
+}
+
+/* Tiptap selected table cells */
+.autodoc-tiptap-editor .ProseMirror .selectedCell:after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 131, 0, 0.18);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Show a subtle focus outline when editing */
+.autodoc-tiptap-editor .ProseMirror:focus {
+  box-shadow: inset 0 0 0 1px rgba(255, 131, 0, 0.45);
+}
+
+/* Give empty paragraphs a visible click target */
+.autodoc-tiptap-editor .ProseMirror p:empty::before {
+  content: ' ';
+  white-space: pre;
+}
