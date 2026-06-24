@@ -972,21 +972,28 @@ const RichTextEditor: React.FC<RichTextEditorProps> = memo(
             >
               S
             </button>
-            <div className="w-px h-4 bg-gray-200 mx-1"></div>
-            <button
-              type="button"
-              onClick={() => execCommand('insertUnorderedList')}
-              className="px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-            >
-              • List
-            </button>
-            <button
-              type="button"
-              onClick={() => execCommand('insertOrderedList')}
-              className="px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-            >
-              1. List
-            </button>
+<button
+  type="button"
+  title="Bullet list"
+  onMouseDown={(e) => {
+    e.preventDefault();
+    document.execCommand('insertUnorderedList', false);
+  }}
+  className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
+>
+  • List
+</button>
+<button
+  type="button"
+  title="Numbered list"
+  onMouseDown={(e) => {
+    e.preventDefault();
+    document.execCommand('insertOrderedList', false);
+  }}
+  className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
+>
+  1. List
+</button>
             <div className="w-px h-4 bg-gray-200 mx-1"></div>
             <button
               type="button"
