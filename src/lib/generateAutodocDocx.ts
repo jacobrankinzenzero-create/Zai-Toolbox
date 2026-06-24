@@ -94,6 +94,13 @@ const CHEVRON_MUTED = 'D8E7E7';
 const BODY_FONT_SIZE = 22;
 const CHEVRON_FONT_SIZE = 20;
 
+// Manual numbered-list positioning.
+// Word uses twips for paragraph indentation.
+// Increase NUMBERED_LIST_LEFT_INDENT if numbers still sit too far left.
+const NUMBERED_LIST_LEFT_INDENT = 1080;
+const NUMBERED_LIST_HANGING_INDENT = 360;
+const NUMBERED_LIST_LEVEL_STEP = 360;
+
 // Internal Word style IDs from the .docx template.
 // These styles must exist in word/styles.xml inside autodoc-sow-template.docx.
 // They let Word render the real template bullets/chevrons instead of us
@@ -430,36 +437,34 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
 
       let currentItemXml = '';
 
-      if (ordered) {
-        /**
-         * Ordered lists should sit at the same visual indentation as the
-         * secondary grey bullet list.
-         *
-         * 720 twips gives the first user-created numbered list one level
-         * deeper than the normal body paragraph.
-         */
-        const numberedIndentLeft = 720 + level * 360;
+if (ordered) {
+  /**
+   * Numbered lists should behave like a secondary/nested list item.
+   *
+   * left indent controls where the text starts.
+   * hanging indent pulls the number back into the marker area.
+   *
+   * This makes:
+   *   1. Numbered item
+   *
+   * align more like the grey secondary chevron list, rather than sitting
+   * at the same level as the main orange body paragraph.
+   */
+  const numberedIndentLeft =
+    NUMBERED_LIST_LEFT_INDENT + level * NUMBERED_LIST_LEVEL_STEP;
 
-        currentItemXml = paragraphXml(
-          runXml(`${index + 1}. `, {
-            color: BODY_TEXT_COLOR,
-            fontSizeHalfPoints: BODY_FONT_SIZE,
-          }) + itemContent,
-          {
-            spacingAfter: 80,
-            indentLeft: numberedIndentLeft,
-            hanging: 240,
-          }
-        );
-      } else {
-        /**
-         * User-created bullet lists use the secondary bullet style from the
-         * Word template, not a manually rendered chevron character.
-         */
-        currentItemXml = styledBodyParagraphXml(itemContent, 2, {
-          spacingAfter: 80,
-        });
-      }
+  currentItemXml = paragraphXml(
+    runXml(`${index + 1}. `, {
+      color: BODY_TEXT_COLOR,
+      fontSizeHalfPoints: BODY_FONT_SIZE,
+    }) + itemContent,
+    {
+      spacingAfter: 80,
+      indentLeft: numberedIndentLeft,
+      hanging: NUMBERED_LIST_HANGING_INDENT,
+    }
+  );
+}
 
       const nestedXml = nestedLists
         .map((nested) =>
