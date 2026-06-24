@@ -514,45 +514,6 @@ function listItemContentToRuns(item: Element): string {
  * This pulls out the visible item text while ignoring nested lists,
  * which are handled separately.
  */
-function listItemContentToRuns(item: Element): string {
-  const childNodes = Array.from(item.childNodes);
-
-  const contentNodes = childNodes.filter((node) => {
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return true;
-    }
-
-    const tag = (node as HTMLElement).tagName.toLowerCase();
-
-    return tag !== 'ul' && tag !== 'ol';
-  });
-
-  let xml = '';
-
-  contentNodes.forEach((node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      xml += runXml(node.textContent || '');
-      return;
-    }
-
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      return;
-    }
-
-    const el = node as HTMLElement;
-    const tag = el.tagName.toLowerCase();
-
-    if (tag === 'p' || tag === 'div') {
-      xml += inlineNodesToRuns(Array.from(el.childNodes));
-      return;
-    }
-
-    xml += inlineNodesToRuns([node]);
-  });
-
-  return xml;
-}
-
 /**
  * Converts HTML lists into Word paragraphs.
  *
