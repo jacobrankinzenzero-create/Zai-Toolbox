@@ -99,7 +99,7 @@ const CHEVRON_FONT_SIZE = 20;
 // They let Word render the real template bullets/chevrons instead of us
 // manually inserting a chevron character.
 const AUTODOC_BULLET_LEVEL_1_STYLE = 'AUTODOCBulletLevel1';
-const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletLevel2';
+const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletlevel2';
 
 /**
  * Escapes user/app text before placing it inside Word XML.
