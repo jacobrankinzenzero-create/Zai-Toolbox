@@ -94,6 +94,13 @@ const CHEVRON_MUTED = 'D8E7E7';
 const BODY_FONT_SIZE = 22;
 const CHEVRON_FONT_SIZE = 20;
 
+// Internal Word style IDs from the .docx template.
+// These styles must exist in word/styles.xml inside autodoc-sow-template.docx.
+// They let Word render the real template bullets/chevrons instead of us
+// manually inserting a chevron character.
+const AUTODOC_BULLET_LEVEL_1_STYLE = 'AUTODOCBulletLevel1';
+const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletLevel2';
+
 /**
  * Escapes user/app text before placing it inside Word XML.
  *
@@ -246,26 +253,27 @@ function paragraphXml(
 }
 
 /**
- * Creates a body paragraph prefixed with the Zenzero orange chevron.
+ * Creates a body paragraph using Word paragraph styles from the template.
  *
- * The hanging indent keeps wrapped lines aligned with the paragraph text,
- * rather than under the chevron.
+ * This is intentionally style-based, not character-based.
+ * The .docx template owns the real visual bullet/chevron:
+ * - AUTODOCBulletLevel1 should be the orange/top-level chevron style.
+ * - AUTODOCBulletLevel2 should be the grey/secondary chevron style.
+ *
+ * If those internal Word style IDs change, update the constants near the top.
  */
-function arrowParagraphXml(
+function styledBodyParagraphXml(
   content: string,
+  level: 1 | 2 = 1,
   options?: { spacingAfter?: number }
 ): string {
-  return paragraphXml(
-    runXml('› ', {
-      color: CHEVRON_ORANGE,
-      fontSizeHalfPoints: CHEVRON_FONT_SIZE,
-    }) + content,
-    {
-      indentLeft: 360,
-      hanging: 240,
-      spacingAfter: options?.spacingAfter ?? 120,
-    }
-  );
+  return paragraphXml(content, {
+    style:
+      level === 1
+        ? AUTODOC_BULLET_LEVEL_1_STYLE
+        : AUTODOC_BULLET_LEVEL_2_STYLE,
+    spacingAfter: options?.spacingAfter ?? 120,
+  });
 }
 
 /**
@@ -374,10 +382,15 @@ function hasBlockChildren(element: Element): boolean {
 }
 
 /**
- * Converts HTML lists into Word paragraphs with chevrons or numbers.
+ * Converts HTML lists into Word paragraphs.
  *
- * This does not use Word's native numbering.xml system yet.
- * Instead, it creates visually reliable list paragraphs.
+ * Unordered lists use the secondary Word bullet style from the template.
+ * This means user-created bullet lists render as the template's level-2
+ * grey/secondary chevron, rather than a manually inserted character.
+ *
+ * Ordered lists are still generated as plain black numbers for now.
+ * If you later create a Word numbered-list style in the template, this can
+ * be updated to apply that style instead.
  */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
@@ -402,26 +415,32 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
         return tag === 'ul' || tag === 'ol';
       }) as HTMLElement[];
 
-      // AUTODOC body paragraphs already use a top-level orange chevron.
-// User-created lists should visually start one level deeper.
-const visualLevel = level + 1;
+      const itemContent =
+        inlineNodesToRuns(inlineContentNodes) || runXml('');
 
-const marker = ordered ? `${index + 1}. ` : '› ';
-const indentLeft = 360 + visualLevel * 360;
+      let currentItemXml = '';
 
-      const markerColor = ordered ? BODY_TEXT_COLOR : CHEVRON_MUTED;
-
-const currentItemXml = paragraphXml(
-  runXml(marker, {
-    color: markerColor,
-    fontSizeHalfPoints: ordered ? BODY_FONT_SIZE : CHEVRON_FONT_SIZE,
-  }) + inlineNodesToRuns(inlineContentNodes),
-  {
-    indentLeft,
-    hanging: 240,
-    spacingAfter: 80,
-  }
-);
+      if (ordered) {
+        // Numbered lists remain simple black numbers.
+        // They intentionally do not use the chevron styles.
+        currentItemXml = paragraphXml(
+          runXml(`${index + 1}. `, {
+            color: BODY_TEXT_COLOR,
+            fontSizeHalfPoints: BODY_FONT_SIZE,
+          }) + itemContent,
+          {
+            indentLeft: 720 + level * 360,
+            hanging: 240,
+            spacingAfter: 80,
+          }
+        );
+      } else {
+        // Any bullet list the user creates in the editor starts visually
+        // as the template's secondary/level-2 bullet style.
+        currentItemXml = styledBodyParagraphXml(itemContent, 2, {
+          spacingAfter: 80,
+        });
+      }
 
       const nestedXml = nestedLists
         .map((nested) =>
@@ -628,7 +647,7 @@ function htmlToWordXml(html: string): string {
 
       if (!text) return '';
 
-      return arrowParagraphXml(runXml(text), {
+      return styledBodyParagraphXml(runXml(text), 1, {
         spacingAfter: 120,
       });
     }
@@ -668,7 +687,7 @@ function htmlToWordXml(html: string): string {
         return paragraphXml(runXml(''));
       }
 
-      return arrowParagraphXml(content, {
+      return styledBodyParagraphXml(content, 1, {
         spacingAfter: 120,
       });
     }
@@ -684,7 +703,7 @@ function htmlToWordXml(html: string): string {
         return '';
       }
 
-      return arrowParagraphXml(content, {
+      return styledBodyParagraphXml(content, 1, {
         spacingAfter: 120,
       });
     }
