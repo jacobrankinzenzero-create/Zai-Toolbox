@@ -84,6 +84,15 @@ type ImageBuildContext = {
 
 const EMUS_PER_INCH = 914400;
 const PX_PER_INCH = 96;
+const BODY_TEXT_COLOR = '242424';
+const CHEVRON_ORANGE = 'FF8300';
+const CHEVRON_MUTED = 'D8E7E7';
+
+// Word font sizes are in half-points.
+// 22 = 11pt body text.
+// 20 = 10pt, roughly 90% of 11pt.
+const BODY_FONT_SIZE = 22;
+const CHEVRON_FONT_SIZE = 20;
 
 /**
  * Escapes user/app text before placing it inside Word XML.
@@ -167,24 +176,15 @@ function runXml(
 ): string {
   if (!text) return '';
 
-  const hasFormatting =
-    options?.bold ||
-    options?.italic ||
-    options?.underline ||
-    options?.color ||
-    options?.fontSizeHalfPoints;
+  const hasFormatting = true;
 
   const rPr = hasFormatting
     ? `<w:rPr>
         ${options?.bold ? '<w:b/>' : ''}
         ${options?.italic ? '<w:i/>' : ''}
         ${options?.underline ? '<w:u w:val="single"/>' : ''}
-        ${options?.color ? `<w:color w:val="${options.color}"/>` : ''}
-        ${
-          options?.fontSizeHalfPoints
-            ? `<w:sz w:val="${options.fontSizeHalfPoints}"/>`
-            : ''
-        }
+        <w:color w:val="${options?.color || BODY_TEXT_COLOR}"/>
+        <w:sz w:val="${options?.fontSizeHalfPoints || BODY_FONT_SIZE}"/>
       </w:rPr>`
     : '';
 
@@ -256,7 +256,10 @@ function arrowParagraphXml(
   options?: { spacingAfter?: number }
 ): string {
   return paragraphXml(
-    runXml('› ', { color: 'FF8300', fontSizeHalfPoints: 22 }) + content,
+    runXml('› ', {
+      color: CHEVRON_ORANGE,
+      fontSizeHalfPoints: CHEVRON_FONT_SIZE,
+    }) + content,
     {
       indentLeft: 360,
       hanging: 240,
@@ -399,18 +402,26 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
         return tag === 'ul' || tag === 'ol';
       }) as HTMLElement[];
 
-      const marker = ordered ? `${index + 1}. ` : '› ';
-      const indentLeft = 360 + level * 360;
+      // AUTODOC body paragraphs already use a top-level orange chevron.
+// User-created lists should visually start one level deeper.
+const visualLevel = level + 1;
 
-      const currentItemXml = paragraphXml(
-        runXml(marker, { color: 'FF8300', fontSizeHalfPoints: 22 }) +
-          inlineNodesToRuns(inlineContentNodes),
-        {
-          indentLeft,
-          hanging: 240,
-          spacingAfter: 80,
-        }
-      );
+const marker = ordered ? `${index + 1}. ` : '› ';
+const indentLeft = 360 + visualLevel * 360;
+
+      const markerColor = ordered ? BODY_TEXT_COLOR : CHEVRON_MUTED;
+
+const currentItemXml = paragraphXml(
+  runXml(marker, {
+    color: markerColor,
+    fontSizeHalfPoints: ordered ? BODY_FONT_SIZE : CHEVRON_FONT_SIZE,
+  }) + inlineNodesToRuns(inlineContentNodes),
+  {
+    indentLeft,
+    hanging: 240,
+    spacingAfter: 80,
+  }
+);
 
       const nestedXml = nestedLists
         .map((nested) =>
@@ -861,8 +872,9 @@ function imageDrawingXml(
   return `
     <w:p>
       <w:pPr>
-        <w:spacing w:before="120" w:after="160"/>
-      </w:pPr>
+  <w:jc w:val="center"/>
+  <w:spacing w:before="120" w:after="160"/>
+</w:pPr>
       <w:r>
         <w:drawing>
           <wp:inline distT="0" distB="0" distL="0" distR="0"

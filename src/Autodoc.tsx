@@ -1046,7 +1046,7 @@ export default function App() {
       {
         id: `sec_${Date.now()}`,
         title: 'New Section',
-        content: '<p>Enter content details...</p>',
+        content: '<p></p>',
         images: [],
         promptMode: false,
       },
