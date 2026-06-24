@@ -501,6 +501,74 @@ function listItemContentToRuns(item: Element): string {
  * - Render as black manual numbers.
  * - Indent to match the secondary list level.
  */
+/**
+ * Extracts visible text/runs from a Tiptap list item.
+ *
+ * Tiptap commonly outputs:
+ *
+ * <li>
+ *   <p>Item text</p>
+ *   <ul>Nested item</ul>
+ * </li>
+ *
+ * This pulls out the visible item text while ignoring nested lists,
+ * which are handled separately.
+ */
+function listItemContentToRuns(item: Element): string {
+  const childNodes = Array.from(item.childNodes);
+
+  const contentNodes = childNodes.filter((node) => {
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return true;
+    }
+
+    const tag = (node as HTMLElement).tagName.toLowerCase();
+
+    return tag !== 'ul' && tag !== 'ol';
+  });
+
+  let xml = '';
+
+  contentNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      xml += runXml(node.textContent || '');
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+
+    if (tag === 'p' || tag === 'div') {
+      xml += inlineNodesToRuns(Array.from(el.childNodes));
+      return;
+    }
+
+    xml += inlineNodesToRuns([node]);
+  });
+
+  return xml;
+}
+
+/**
+ * Converts HTML lists into Word paragraphs.
+ *
+ * This version intentionally uses manual list markers rather than relying
+ * on Word template list styles, because it is more reliable for the current
+ * DIY exporter.
+ *
+ * Unordered lists:
+ * - Use a chevron marker.
+ * - First list level is muted grey.
+ * - Deeper list levels are also muted grey.
+ *
+ * Ordered lists:
+ * - Use black manual numbering.
+ * - Indented to match the secondary list level.
+ */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
     (child) => child.tagName.toLowerCase() === 'li'
@@ -538,12 +606,19 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
           }
         );
       } else {
-        currentItemXml = paragraphXml(itemContent || runXml(''), {
-          style: AUTODOC_BODY_BULLET_2_STYLE,
-          spacingAfter: 80,
-          indentLeft: 1080 + level * 360,
-          hanging: 360,
-        });
+        const bulletIndentLeft = 1080 + level * 360;
+
+        currentItemXml = paragraphXml(
+          runXml('› ', {
+            color: level === 0 ? CHEVRON_MUTED : CHEVRON_MUTED,
+            fontSizeHalfPoints: CHEVRON_FONT_SIZE,
+          }) + itemContent,
+          {
+            spacingAfter: 80,
+            indentLeft: bulletIndentLeft,
+            hanging: 360,
+          }
+        );
       }
 
       const nestedXml = nestedLists
@@ -556,7 +631,6 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
     })
     .join('');
 }
-
 /**
  * Converts the content inside an HTML table cell into Word XML.
  *
