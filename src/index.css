@@ -1,0 +1,51 @@
+/* AUTODOC Tiptap editor styling */
+
+.autodoc-tiptap-editor .ProseMirror {
+  min-height: 180px;
+  outline: none;
+}
+
+.autodoc-tiptap-editor .ProseMirror p {
+  margin: 0 0 0.6rem;
+}
+
+.autodoc-tiptap-editor .ProseMirror ul,
+.autodoc-tiptap-editor .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.autodoc-tiptap-editor .ProseMirror li {
+  margin: 0.2rem 0;
+}
+
+.autodoc-tiptap-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  table-layout: fixed;
+}
+
+.autodoc-tiptap-editor .ProseMirror th,
+.autodoc-tiptap-editor .ProseMirror td {
+  border: 1px solid #cbd5e1;
+  padding: 0.4rem;
+  vertical-align: top;
+}
+
+.autodoc-tiptap-editor .ProseMirror th {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+
+.autodoc-tiptap-editor .ProseMirror .selectedCell:after {
+  background: rgba(255, 131, 0, 0.15);
+  content: '';
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
