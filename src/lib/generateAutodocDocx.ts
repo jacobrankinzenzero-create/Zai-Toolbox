@@ -223,29 +223,36 @@ function paragraphXml(
 ): string {
   const pPrParts: string[] = [];
 
+  // Apply a Word paragraph style from the template.
+  // Example: AUTODOCBulletLevel2
+  // This lets Word control bullets, chevrons, indentation, spacing, etc.
   if (options?.style) {
     pPrParts.push(`<w:pStyle w:val="${options.style}"/>`);
   }
 
+  // Optional manual spacing override.
   if (typeof options?.spacingAfter === 'number') {
     pPrParts.push(`<w:spacing w:after="${options.spacingAfter}"/>`);
   }
 
+  // Optional manual indent override.
+  // Do NOT pass indentLeft/hanging when using Word bullet styles unless you
+  // intentionally want to override the template's indentation.
   if (
     typeof options?.indentLeft === 'number' ||
     typeof options?.hanging === 'number'
   ) {
-    pPrParts.push(
-      `<w:ind ${
-        typeof options.indentLeft === 'number'
-          ? `w:left="${options.indentLeft}"`
-          : ''
-      } ${
-        typeof options.hanging === 'number'
-          ? `w:hanging="${options.hanging}"`
-          : ''
-      }/>`
-    );
+    const indentParts: string[] = [];
+
+    if (typeof options.indentLeft === 'number') {
+      indentParts.push(`w:left="${options.indentLeft}"`);
+    }
+
+    if (typeof options.hanging === 'number') {
+      indentParts.push(`w:hanging="${options.hanging}"`);
+    }
+
+    pPrParts.push(`<w:ind ${indentParts.join(' ')}/>`);
   }
 
   const pPr = pPrParts.length > 0 ? `<w:pPr>${pPrParts.join('')}</w:pPr>` : '';
@@ -457,6 +464,19 @@ function hasBlockChildren(element: Element): boolean {
  * This pulls out the visible item text while ignoring nested lists,
  * which are handled separately.
  */
+/**
+ * Extracts visible text/runs from a Tiptap list item.
+ *
+ * Tiptap commonly outputs list items like:
+ *
+ * <li>
+ *   <p>Item text</p>
+ *   <ul>Nested bullet</ul>
+ * </li>
+ *
+ * This function pulls the visible item text out of the <li>, while ignoring
+ * nested <ul>/<ol> lists. Nested lists are handled separately by listXml().
+ */
 function listItemContentToRuns(item: Element): string {
   const childNodes = Array.from(item.childNodes);
 
@@ -497,15 +517,16 @@ function listItemContentToRuns(item: Element): string {
 }
 
 /**
- * Converts HTML lists into Word paragraphs.
+ * Converts HTML lists from Tiptap into Word paragraphs.
  *
- * Important:
- * - Unordered/bullet lists do NOT manually render chevrons.
- * - They apply the Word template paragraph style instead.
- * - The template is responsible for the actual bullet/chevron appearance.
+ * Bulleted lists:
+ * - Apply the Word template paragraph style AUTODOCBulletLevel2.
+ * - The template controls the bullet/chevron, indentation, colour, and spacing.
+ * - We do NOT manually render the chevron here.
  *
- * Ordered lists are still rendered manually as black numbers for now,
- * but they use the same secondary-level indentation.
+ * Numbered lists:
+ * - Render black manual numbers for now.
+ * - Indent to match the secondary list level.
  */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
@@ -544,15 +565,8 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
           }
         );
       } else {
-        /**
-         * Use the Word template's secondary bullet style.
-         *
-         * If this does not show the correct chevron/bullet, the issue is not
-         * the exporter logic — it means AUTODOC_BODY_BULLET_2_STYLE does not
-         * match the internal Word style ID in the template.
-         */
         currentItemXml = paragraphXml(itemContent || runXml(''), {
-          style: AUTODOC_BULLET_LEVEL_2_STYLE,
+          style: 'AUTODOCBulletLevel2',
           spacingAfter: 80,
         });
       }
