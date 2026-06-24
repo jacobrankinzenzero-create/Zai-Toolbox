@@ -3,6 +3,7 @@ import './index.css';
 import { useNavigate } from 'react-router-dom';
 import { Home } from 'lucide-react';
 import { generateAutodocDocx } from './lib/generateAutodocDocx';
+import TiptapSectionEditor from './components/TiptapSectionEditor';
 
 // --- TYPE DEFINITIONS ---
 interface TonePreset {
@@ -740,7 +741,7 @@ interface RichTextEditorProps {
   currentTone: TonePreset;
 }
 
-const RichTextEditor: React.FC<RichTextEditorProps> = memo(
+const RichTextEditor = memo(
   ({
     content,
     onChange,
@@ -749,389 +750,24 @@ const RichTextEditor: React.FC<RichTextEditorProps> = memo(
     isPromptMode,
     setPromptMode,
     currentTone,
+  }: {
+    content: string;
+    onChange: (content: string) => void;
+    onGenerateAI?: (promptText: string) => Promise<void>;
+    isGenerating?: boolean;
+    isPromptMode?: boolean;
+    setPromptMode?: (val: boolean) => void;
+    currentTone?: TonePreset;
   }) => {
-    const editorRef = useRef<HTMLDivElement>(null);
-    const [inTable, setInTable] = useState(false);
-
-    useEffect(() => {
-      if (
-        editorRef.current &&
-        content !== editorRef.current.innerHTML &&
-        document.activeElement !== editorRef.current
-      ) {
-        editorRef.current.innerHTML = content;
-      }
-    }, [content]);
-
-    const handleInput = useCallback(() => {
-      if (editorRef.current) onChange(editorRef.current.innerHTML);
-    }, [onChange]);
-
-    const checkContext = useCallback(() => {
-      const selection = window.getSelection();
-      if (!selection || !selection.rangeCount) {
-        setInTable(false);
-        return;
-      }
-      let node: Node | null = selection.getRangeAt(0).startContainer;
-      if (node.nodeType === 3) node = node.parentNode;
-      if (node instanceof Element) {
-        setInTable(!!node.closest('table'));
-      }
-    }, []);
-
-    const execCommand = useCallback(
-      (command: string, value: string | null = null) => {
-        document.execCommand(command, false, value ?? undefined);
-        if (editorRef.current) {
-          editorRef.current.focus();
-        }
-        handleInput();
-        checkContext();
-      },
-      [handleInput, checkContext]
-    );
-
-    const insertTable = useCallback(() => {
-      const defaultTableHtml = `
-      <div style="overflow-x: auto; margin: 1rem 0;">
-        <table border="1" style="width: 100%; border-collapse: collapse; border-color: #d1d5db; text-align: left;">
-          <thead style="background-color: #f9fafb;">
-            <tr style="background-color: #f3f4f6;">
-              <th style="padding: 10px; border: 1px solid #9ca3af; font-weight: bold;">Header 1</th>
-              <th style="padding: 10px; border: 1px solid #9ca3af; font-weight: bold;">Header 2</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 10px; border: 1px solid #d1d5db;"><br></td>
-              <td style="padding: 10px; border: 1px solid #d1d5db;"><br></td>
-            </tr>
-          </tbody>
-        </table>
-      </div><p><br></p>`;
-      document.execCommand('insertHTML', false, defaultTableHtml);
-      if (editorRef.current) {
-        editorRef.current.focus();
-      }
-      handleInput();
-    }, [handleInput]);
-
-    const getActiveTableContext = (): TableContext | null => {
-      const selection = window.getSelection();
-      if (!selection || !selection.rangeCount) return null;
-      let node: Node | null = selection.getRangeAt(0).startContainer;
-      if (node.nodeType === 3) node = node.parentNode;
-      if (!(node instanceof Element)) return null;
-
-      const td = node.closest('td, th') as HTMLTableCellElement;
-      const tr = node.closest('tr') as HTMLTableRowElement;
-      const table = node.closest('table') as HTMLTableElement;
-
-      if (td && tr && table) {
-        return {
-          td,
-          tr,
-          table,
-          cellIndex: td.cellIndex,
-          rowIndex: tr.rowIndex,
-        };
-      }
-      return null;
-    };
-
-    const addRow = useCallback(() => {
-      const ctx = getActiveTableContext();
-      if (!ctx || !ctx.tr.parentNode) return;
-      const newRow = document.createElement('tr');
-      Array.from(ctx.tr.children).forEach(() => {
-        const newCell = document.createElement('td');
-        newCell.style.cssText = 'padding: 10px; border: 1px solid #d1d5db;';
-        newCell.innerHTML = '<br>';
-        newRow.appendChild(newCell);
-      });
-      ctx.tr.parentNode.insertBefore(newRow, ctx.tr.nextSibling);
-      handleInput();
-    }, [handleInput]);
-
-    const removeRow = useCallback(() => {
-      const ctx = getActiveTableContext();
-      if (!ctx || !ctx.tr.parentNode) return;
-      if (ctx.tr.parentNode.children.length <= 1) return;
-      ctx.tr.remove();
-      handleInput();
-      checkContext();
-    }, [handleInput, checkContext]);
-
-    const addColumn = useCallback(() => {
-      const ctx = getActiveTableContext();
-      if (!ctx) return;
-      const rows = ctx.table.rows;
-      for (let i = 0; i < rows.length; i++) {
-        const sourceCell = rows[i].children[ctx.cellIndex] as HTMLElement;
-        if (!sourceCell || !rows[i].parentNode) continue;
-        const isHeader =
-          rows[i].parentNode?.nodeName.toLowerCase() === 'thead' ||
-          sourceCell.tagName.toLowerCase() === 'th';
-        const newCell = document.createElement(isHeader ? 'th' : 'td');
-        newCell.style.cssText = isHeader
-          ? 'padding: 10px; border: 1px solid #9ca3af; font-weight: bold;'
-          : 'padding: 10px; border: 1px solid #d1d5db;';
-        newCell.innerHTML = '<br>';
-        if (sourceCell.nextSibling) {
-          rows[i].insertBefore(newCell, sourceCell.nextSibling);
-        } else {
-          rows[i].appendChild(newCell);
-        }
-      }
-      handleInput();
-    }, [handleInput]);
-
-    const removeColumn = useCallback(() => {
-      const ctx = getActiveTableContext();
-      if (!ctx) return;
-      if (ctx.tr.children.length <= 1) return;
-      const rows = ctx.table.rows;
-      const cellIdx = ctx.cellIndex;
-      for (let i = 0; i < rows.length; i++) {
-        if (rows[i].children[cellIdx]) {
-          rows[i].children[cellIdx].remove();
-        }
-      }
-      handleInput();
-      checkContext();
-    }, [handleInput, checkContext]);
-
-    const handleAIAction = useCallback(async () => {
-      if (!isPromptMode) {
-        setPromptMode(true);
-        return;
-      }
-      const promptText =
-        editorRef.current?.innerText || editorRef.current?.textContent;
-      if (promptText && promptText.trim()) {
-        await onGenerateAI(promptText);
-        setPromptMode(false);
-      }
-    }, [isPromptMode, setPromptMode, onGenerateAI]);
-
     return (
-      <div
-        className={`border rounded-xl overflow-hidden transition-all duration-300 ${
-          isPromptMode
-            ? 'border-[#ff8300] ring-2 ring-[#ff8300]/20'
-            : 'border-gray-200'
-        } bg-white shadow-sm`}
-      >
-        <div className="flex flex-wrap gap-1.5 items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-gray-50/80">
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              onClick={() => execCommand('formatBlock', 'H1')}
-              className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-            >
-              H1
-            </button>
-            <button
-              type="button"
-              onClick={() => execCommand('formatBlock', 'H2')}
-              className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-            >
-              H2
-            </button>
-            <div className="w-px h-4 bg-gray-200 mx-1"></div>
-            <button
-              type="button"
-              onClick={() => execCommand('bold')}
-              className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-              title="Bold"
-            >
-              B
-            </button>
-            <button
-              type="button"
-              onClick={() => execCommand('italic')}
-              className="px-2 py-1 text-xs font-bold italic text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-              title="Italic"
-            >
-              I
-            </button>
-            <button
-              type="button"
-              onClick={() => execCommand('underline')}
-              className="px-2 py-1 text-xs font-bold underline text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-              title="Underline"
-            >
-              U
-            </button>
-            <button
-              type="button"
-              onClick={() => execCommand('strikeThrough')}
-              className="px-2 py-1 text-xs font-bold line-through text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
-              title="Strikethrough"
-            >
-              S
-            </button>
-<button
-  type="button"
-  title="Bullet list"
-  onMouseDown={(e) => {
-    e.preventDefault();
-    document.execCommand('insertUnorderedList', false);
-  }}
-  className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
->
-  • List
-</button>
-<button
-  type="button"
-  title="Numbered list"
-  onMouseDown={(e) => {
-    e.preventDefault();
-    document.execCommand('insertOrderedList', false);
-  }}
-  className="px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-200/70 rounded transition-colors"
->
-  1. List
-</button>
-            <div className="w-px h-4 bg-gray-200 mx-1"></div>
-            <button
-              type="button"
-              onClick={insertTable}
-              className="p-1.5 flex items-center text-gray-600 hover:bg-gray-200/70 rounded transition-colors"
-              title="Insert Responsive Table"
-            >
-              <IconTable />
-            </button>
-
-            {inTable && (
-              <>
-                <div className="w-px h-4 bg-gray-200 mx-1"></div>
-                <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold ml-1">
-                  Table:
-                </span>
-                <button
-                  type="button"
-                  onClick={addRow}
-                  className="px-2 py-0.5 text-[11px] font-semibold text-[#ff8300] bg-orange-50 hover:bg-orange-100 rounded border border-orange-200 transition-colors"
-                  title="Add Row Below"
-                >
-                  + Row
-                </button>
-                <button
-                  type="button"
-                  onClick={removeRow}
-                  className="px-2 py-0.5 text-[11px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors"
-                  title="Delete Active Row"
-                >
-                  - Row
-                </button>
-                <button
-                  type="button"
-                  onClick={addColumn}
-                  className="px-2 py-0.5 text-[11px] font-semibold text-[#ff8300] bg-orange-50 hover:bg-orange-100 rounded border border-orange-200 transition-colors"
-                  title="Add Column Right"
-                >
-                  + Col
-                </button>
-                <button
-                  type="button"
-                  onClick={removeColumn}
-                  className="px-2 py-0.5 text-[11px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors"
-                  title="Delete Active Column"
-                >
-                  - Col
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isPromptMode && (
-              <span className="text-[10px] bg-amber-50 text-[#ff8300] font-semibold px-2 py-0.5 rounded border border-amber-200">
-                Tone: {currentTone.name}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleAIAction}
-              disabled={isGenerating}
-              className={`flex items-center text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 ${
-                isGenerating
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : isPromptMode
-                  ? 'bg-[#ff8300] text-white hover:bg-[#e67600] shadow-sm animate-pulse'
-                  : 'bg-orange-50 text-[#ff8300] hover:bg-orange-100 border border-orange-100'
-              }`}
-            >
-              {isGenerating ? (
-                <span className="flex items-center gap-1.5">
-                  <svg
-                    className="animate-spin h-3.5 w-3.5 text-gray-400"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Generating...
-                </span>
-              ) : isPromptMode ? (
-                <>
-                  <span className="mr-1">
-                    <IconSparkles />
-                  </span>{' '}
-                  Synthesize Draft
-                </>
-              ) : (
-                <>
-                  <span className="mr-1">
-                    <IconSparkles />
-                  </span>{' '}
-                  AI Assistant
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        <div className="relative">
-          {isPromptMode && (
-            <div className="absolute top-0 left-0 right-0 text-xs bg-[#ff8300]/10 text-[#ff8300] px-4 py-1.5 border-b border-[#ff8300]/20 font-medium">
-              💡 <strong>Draft Guidelines:</strong> Type your details below,
-              then click <strong>Synthesize Draft</strong> to construct
-              formatted, expert copy.
-            </div>
-          )}
-          <div
-            ref={editorRef}
-            contentEditable
-            onInput={handleInput}
-            onBlur={handleInput}
-            onMouseUp={checkContext}
-            onKeyUp={checkContext}
-            className={`w-full min-h-[160px] p-4 text-gray-700 focus:outline-none prose prose-slate max-w-none overflow-x-auto ${
-              isPromptMode ? 'pt-10 bg-orange-50/20' : ''
-            }`}
-            style={{ minHeight: '160px' }}
-          />
-        </div>
-      </div>
+      <TiptapSectionEditor
+        content={content}
+        onChange={onChange}
+      />
     );
   }
 );
+
 RichTextEditor.displayName = 'RichTextEditor';
 
 // --- SECTION COMPONENT ---
@@ -1280,7 +916,7 @@ const SectionComponent: React.FC<SectionComponentProps> = memo(
             onGenerateAI={triggerAIGeneration}
             isGenerating={section.isGenerating}
             isPromptMode={section.promptMode}
-            setPromptMode={(val) =>
+            setPromptMode={(val: boolean) =>
               updateSection(section.id, { promptMode: val })
             }
             currentTone={activeTone}
