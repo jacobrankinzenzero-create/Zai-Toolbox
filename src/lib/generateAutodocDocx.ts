@@ -1,6 +1,16 @@
 import PizZip from 'pizzip';
 import { saveAs } from 'file-saver';
 
+
+const BODY_FONT_SIZE = 22;
+
+const AUTODOC_BODY_BULLET_1_STYLE = 'AUTODOCBodyBullet1';
+const AUTODOC_BODY_BULLET_2_STYLE = 'AUTODOCBodyBullet2';
+
+const NUMBERED_LIST_LEFT_INDENT = 1080;
+const NUMBERED_LIST_HANGING_INDENT = 360;
+const NUMBERED_LIST_LEVEL_STEP = 360;
+
 /**
  * AUTODOC Word export generator.
  *
@@ -91,15 +101,7 @@ const CHEVRON_MUTED = 'D8E7E7';
 // Word font sizes are in half-points.
 // 22 = 11pt body text.
 // 20 = 10pt, roughly 90% of 11pt.
-const BODY_FONT_SIZE = 22;
 const CHEVRON_FONT_SIZE = 20;
-
-// Manual numbered-list positioning.
-// Word uses twips for paragraph indentation.
-// Increase NUMBERED_LIST_LEFT_INDENT if numbers still sit too far left.
-const NUMBERED_LIST_LEFT_INDENT = 1080;
-const NUMBERED_LIST_HANGING_INDENT = 360;
-const NUMBERED_LIST_LEVEL_STEP = 360;
 
 // Internal Word style IDs from the .docx template.
 // These styles must exist in word/styles.xml inside autodoc-sow-template.docx.
@@ -387,6 +389,19 @@ function isBlockElement(node: ChildNode): boolean {
 function hasBlockChildren(element: Element): boolean {
   return Array.from(element.childNodes).some(isBlockElement);
 }
+/**
+ * Extracts the visible text/runs from a Tiptap list item.
+ *
+ * Tiptap commonly outputs list items like:
+ *
+ * <li>
+ *   <p>Item text</p>
+ *   <ul>...</ul>
+ * </li>
+ *
+ * This helper pulls the item text out of p/div/span/text nodes while ignoring
+ * nested ul/ol lists, which are handled separately.
+ */
 
 /**
  * Converts HTML lists into Word paragraphs.
@@ -410,6 +425,82 @@ function hasBlockChildren(element: Element): boolean {
  * - Use black manual numbering.
  * - Indented to visually match the secondary list level.
  */
+/**
+ * Converts HTML lists into Word paragraphs.
+ *
+ * AUTODOC documents already use a primary body bullet style for normal
+ * paragraphs, so user-created lists should start visually one level deeper.
+ *
+ * Unordered lists:
+ * - Use the Word template's secondary bullet style.
+ * - If the style ID is wrong/missing, the item text should still appear.
+ *
+ * Ordered lists:
+ * - Render as black manual numbers.
+ * - Indented to match the secondary bullet level.
+ */
+/**
+ * Extracts visible text/runs from a Tiptap list item.
+ *
+ * Tiptap commonly outputs:
+ *
+ * <li>
+ *   <p>Item text</p>
+ *   <ul>Nested item</ul>
+ * </li>
+ *
+ * This pulls out the visible item text while ignoring nested lists,
+ * which are handled separately.
+ */
+function listItemContentToRuns(item: Element): string {
+  const childNodes = Array.from(item.childNodes);
+
+  const contentNodes = childNodes.filter((node) => {
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return true;
+    }
+
+    const tag = (node as HTMLElement).tagName.toLowerCase();
+
+    return tag !== 'ul' && tag !== 'ol';
+  });
+
+  let xml = '';
+
+  contentNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      xml += runXml(node.textContent || '');
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+
+    if (tag === 'p' || tag === 'div') {
+      xml += inlineNodesToRuns(Array.from(el.childNodes));
+      return;
+    }
+
+    xml += inlineNodesToRuns([node]);
+  });
+
+  return xml;
+}
+
+/**
+ * Converts HTML lists into Word paragraphs.
+ *
+ * Unordered lists:
+ * - Use the secondary AUTODOC bullet style from the Word template.
+ *
+ * Ordered lists:
+ * - Render as black manual numbers.
+ * - Indent to match the secondary list level.
+ */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
     (child) => child.tagName.toLowerCase() === 'li'
@@ -417,54 +508,43 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
 
   return items
     .map((item, index) => {
-      const childNodes = Array.from(item.childNodes);
+      const itemContent = listItemContentToRuns(item);
 
-      const inlineContentNodes = childNodes.filter((node) => {
-        if (node.nodeType !== Node.ELEMENT_NODE) return true;
-
-        const tag = (node as HTMLElement).tagName.toLowerCase();
-        return tag !== 'ul' && tag !== 'ol';
-      });
-
-      const nestedLists = childNodes.filter((node) => {
-        if (node.nodeType !== Node.ELEMENT_NODE) return false;
+      const nestedLists = Array.from(item.childNodes).filter((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          return false;
+        }
 
         const tag = (node as HTMLElement).tagName.toLowerCase();
+
         return tag === 'ul' || tag === 'ol';
       }) as HTMLElement[];
 
-      const itemContent = inlineNodesToRuns(inlineContentNodes);
-
       let currentItemXml = '';
 
-if (ordered) {
-  /**
-   * Numbered lists should behave like a secondary/nested list item.
-   *
-   * left indent controls where the text starts.
-   * hanging indent pulls the number back into the marker area.
-   *
-   * This makes:
-   *   1. Numbered item
-   *
-   * align more like the grey secondary chevron list, rather than sitting
-   * at the same level as the main orange body paragraph.
-   */
-  const numberedIndentLeft =
-    NUMBERED_LIST_LEFT_INDENT + level * NUMBERED_LIST_LEVEL_STEP;
+      if (ordered) {
+        const numberedIndentLeft =
+          NUMBERED_LIST_LEFT_INDENT + level * NUMBERED_LIST_LEVEL_STEP;
 
-  currentItemXml = paragraphXml(
-    runXml(`${index + 1}. `, {
-      color: BODY_TEXT_COLOR,
-      fontSizeHalfPoints: BODY_FONT_SIZE,
-    }) + itemContent,
-    {
-      spacingAfter: 80,
-      indentLeft: numberedIndentLeft,
-      hanging: NUMBERED_LIST_HANGING_INDENT,
-    }
-  );
-}
+        currentItemXml = paragraphXml(
+          runXml(`${index + 1}. `, {
+            color: BODY_TEXT_COLOR,
+            fontSizeHalfPoints: BODY_FONT_SIZE,
+          }) + itemContent,
+          {
+            spacingAfter: 80,
+            indentLeft: numberedIndentLeft,
+            hanging: NUMBERED_LIST_HANGING_INDENT,
+          }
+        );
+      } else {
+        currentItemXml = paragraphXml(itemContent || runXml(''), {
+          style: AUTODOC_BODY_BULLET_2_STYLE,
+          spacingAfter: 80,
+          indentLeft: 1080 + level * 360,
+          hanging: 360,
+        });
+      }
 
       const nestedXml = nestedLists
         .map((nested) =>
