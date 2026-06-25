@@ -139,13 +139,40 @@ function softenLongWords(value: string, every = 18): string {
 }
 
 /**
+ * Replaces simple metadata markers in raw Word XML.
+ *
+ * Example:
+ * [[ORG_NAME]] becomes the client organisation name.
+ *
+ * This is used for:
+ * - word/document.xml
+ * - word/header*.xml
+ * - word/footer*.xml
+ */
+function replaceAllPlaceholders(
+  xml: string,
+  replacements: Record<string, string>
+): string {
+  let output = xml;
+
+  Object.entries(replacements).forEach(([key, value]) => {
+    output = output.split(`[[${key}]]`).join(escapeXml(value));
+  });
+
+  return output;
+}
+
+/**
  * Removes the whole Word paragraph containing a marker.
  *
- * Used for optional single-line placeholders such as [[DOCUMENT_TYPE]].
- * If no document type is supplied, we remove the paragraph instead of leaving
- * a blank line above the title.
+ * Used for optional single-line placeholders such as [[DOCUMENT_TYPE]]. If no
+ * document type/subtitle is supplied, removing the paragraph avoids leaving an
+ * empty line above the document title.
  */
-function removeParagraphContainingMarker(documentXml: string, marker: string): string {
+function removeParagraphContainingMarker(
+  documentXml: string,
+  marker: string
+): string {
   const paragraphs = documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
 
   const markerParagraph = paragraphs.find((paragraph) =>
@@ -162,7 +189,7 @@ function removeParagraphContainingMarker(documentXml: string, marker: string): s
 /**
  * Removes the whole Word table containing a marker.
  *
- * Used for optional visual blocks, such as the metadata/version-control table.
+ * Used for optional visual blocks such as the front-page document details table.
  * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
  */
 function removeTableContainingMarker(documentXml: string, marker: string): string {
@@ -186,37 +213,13 @@ function removeTableContainingMarker(documentXml: string, marker: string): strin
 }
 
 /**
- * Removes a marker while keeping the surrounding content.
+ * Removes a marker while keeping the surrounding paragraph/table.
  *
- * Used when the metadata table is included, so [[METADATA_TABLE]] does not
- * appear in the final document.
+ * Used when an optional block is included, so helper markers such as
+ * [[METADATA_TABLE]] do not appear in the final document.
  */
 function removeMarkerText(documentXml: string, marker: string): string {
   return documentXml.split(marker).join('');
-}
-
-/**
- * Replaces simple metadata markers in raw Word XML.
- *
- * Example:
- * [[ORG_NAME]] becomes the client organisation name.
- *
- * This is used for:
- * - word/document.xml
- * - word/header*.xml
- * - word/footer*.xml
- */
-function replaceAllPlaceholders(
-  xml: string,
-  replacements: Record<string, string>
-): string {
-  let output = xml;
-
-  Object.entries(replacements).forEach(([key, value]) => {
-    output = output.split(`[[${key}]]`).join(escapeXml(value));
-  });
-
-  return output;
 }
 
 /**
@@ -1392,20 +1395,20 @@ export async function generateAutodocDocx({
 
   const title = documentTitle || 'Untitled Statement of Work';
 
-const documentType =
-  typeof metadata.documentType === 'string'
-    ? metadata.documentType.trim()
-    : '';
+  const documentType =
+    typeof metadata.documentType === 'string'
+      ? metadata.documentType.trim()
+      : '';
 
-const replacements: Record<string, string> = {
-  DOCUMENT_TITLE: title,
-  DOCUMENT_TYPE: documentType,
-  ORG_NAME: metadata.orgName || 'Client Organisation',
-  CLIENT_NAME: metadata.clientName || 'Client Representative',
-  CLIENT_EMAIL: metadata.clientEmail || '',
-  USER_EMAIL: metadata.userEmail || 'Zenzero Consultant',
-  ISSUE_DATE: issueDate,
-};
+  const replacements: Record<string, string> = {
+    DOCUMENT_TITLE: title,
+    DOCUMENT_TYPE: documentType,
+    ORG_NAME: metadata.orgName || '',
+    CLIENT_NAME: metadata.clientName || '',
+    CLIENT_EMAIL: metadata.clientEmail || '',
+    USER_EMAIL: metadata.userEmail || '',
+    ISSUE_DATE: issueDate,
+  };
 
   const imageContext: ImageBuildContext = {
     zip,
@@ -1413,30 +1416,31 @@ const replacements: Record<string, string> = {
     imageCounter: 0,
   };
 
-let documentXml = documentFile.asText();
+  let documentXml = documentFile.asText();
 
-// If no document type is supplied, remove the whole paragraph containing
-// [[DOCUMENT_TYPE]] so the title does not have an awkward blank line above it.
-if (!documentType) {
-  documentXml = removeParagraphContainingMarker(documentXml, '[[DOCUMENT_TYPE]]');
-}
+  // Remove optional blocks before replacing normal placeholders.
+  if (!documentType) {
+    documentXml = removeParagraphContainingMarker(
+      documentXml,
+      '[[DOCUMENT_TYPE]]'
+    );
+  }
 
-// If the user unticks the metadata/version-control table option, remove the
-// whole table containing [[METADATA_TABLE]]. Otherwise, keep the table and
-// remove only the marker text.
-if (metadata.includeMetadataTable === false) {
-  documentXml = removeTableContainingMarker(documentXml, '[[METADATA_TABLE]]');
-} else {
-  documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
-}
+  if (metadata.includeMetadataTable === false) {
+    documentXml = removeTableContainingMarker(
+      documentXml,
+      '[[METADATA_TABLE]]'
+    );
+  } else {
+    documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
+  }
 
-documentXml = replaceAllPlaceholders(documentXml, replacements);
-
-documentXml = await replaceSectionTableRows(
-  documentXml,
-  sections,
-  imageContext
-);
+  documentXml = replaceAllPlaceholders(documentXml, replacements);
+  documentXml = await replaceSectionTableRows(
+    documentXml,
+    sections,
+    imageContext
+  );
 
   zip.file('word/document.xml', documentXml);
 
