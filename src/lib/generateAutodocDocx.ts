@@ -1,6 +1,61 @@
 import PizZip from 'pizzip';
 import { saveAs } from 'file-saver';
+/**
+ * Removes the optional metadata/details block from the main document body.
+ *
+ * The Word template should contain:
+ * [[METADATA_START]]
+ * [metadata table here]
+ * [[METADATA_END]]
+ *
+ * This removes from the paragraph containing [[METADATA_START]] through to
+ * the paragraph containing [[METADATA_END]].
+ */
+function removeBlockBetweenMarkers(
+  documentXml: string,
+  startMarker: string,
+  endMarker: string
+): string {
+  const startIndex = documentXml.indexOf(startMarker);
+  const endIndex = documentXml.indexOf(endMarker);
 
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return documentXml;
+  }
+
+  const blockStart = documentXml.lastIndexOf('<w:p', startIndex);
+  const endParagraphClose = documentXml.indexOf('</w:p>', endIndex);
+
+  if (blockStart === -1 || endParagraphClose === -1) {
+    return (
+      documentXml.slice(0, startIndex) +
+      documentXml.slice(endIndex + endMarker.length)
+    );
+  }
+
+  return (
+    documentXml.slice(0, blockStart) +
+    documentXml.slice(endParagraphClose + '</w:p>'.length)
+  );
+}
+
+/**
+ * Removes only the metadata block markers while keeping the metadata table.
+ *
+ * Used when the user ticks:
+ * "Include document details table in final document".
+ */
+function removeOptionalBlockMarkers(
+  documentXml: string,
+  startMarker: string,
+  endMarker: string
+): string {
+  return documentXml
+    .split(startMarker)
+    .join('')
+    .split(endMarker)
+    .join('');
+}
 /**
  * Word style IDs used by the AUTODOC template.
  *
@@ -1454,14 +1509,19 @@ export async function generateAutodocDocx({
     );
   }
 
-  if (metadata.includeMetadataTable === false) {
-    documentXml = removeTableContainingMarker(
-      documentXml,
-      '[[METADATA_TABLE]]'
-    );
-  } else {
-    documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
-  }
+if (metadata.includeMetadataTable === false) {
+  documentXml = removeBlockBetweenMarkers(
+    documentXml,
+    '[[METADATA_START]]',
+    '[[METADATA_END]]'
+  );
+} else {
+  documentXml = removeOptionalBlockMarkers(
+    documentXml,
+    '[[METADATA_START]]',
+    '[[METADATA_END]]'
+  );
+}
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
   documentXml = await replaceSectionTableRows(
