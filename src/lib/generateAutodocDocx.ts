@@ -187,36 +187,64 @@ function removeParagraphContainingMarker(
 }
 
 /**
- * Removes the whole Word table containing a marker.
+ * Gets the visible text from a chunk of Word XML.
  *
- * Used for optional visual blocks such as the front-page document details table.
- * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
+ * Word often splits placeholder text across multiple XML runs, so searching
+ * the raw XML for [[METADATA_TABLE]] is not always reliable.
+ *
+ * By removing XML tags first, this can still detect the marker even when Word
+ * has split it internally.
  */
-function removeTableContainingMarker(documentXml: string, marker: string): string {
-  const markerIndex = documentXml.indexOf(marker);
-
-  if (markerIndex === -1) {
-    return documentXml;
-  }
-
-  const tableStart = documentXml.lastIndexOf('<w:tbl>', markerIndex);
-  const tableEnd = documentXml.indexOf('</w:tbl>', markerIndex);
-
-  if (tableStart === -1 || tableEnd === -1) {
-    return documentXml;
-  }
-
-  return (
-    documentXml.slice(0, tableStart) +
-    documentXml.slice(tableEnd + '</w:tbl>'.length)
-  );
+function visibleTextFromWordXml(xml: string): string {
+  return xml.replace(/<[^>]+>/g, '');
 }
 
 /**
- * Removes a marker while keeping the surrounding paragraph/table.
+ * Returns true when a Word XML block contains a marker.
  *
- * Used when an optional block is included, so helper markers such as
- * [[METADATA_TABLE]] do not appear in the final document.
+ * Checks both:
+ * - raw XML, for simple placeholders
+ * - visible text, for placeholders split across Word runs
+ */
+function wordXmlContainsMarker(xml: string, marker: string): boolean {
+  return xml.includes(marker) || visibleTextFromWordXml(xml).includes(marker);
+}
+
+/**
+ * Removes the whole Word table containing a marker.
+ *
+ * Used for the optional metadata/version-control table.
+ *
+ * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
+ * If the user unticks the checkbox, this removes the entire table.
+ */
+function removeTableContainingMarker(documentXml: string, marker: string): string {
+  const tables = documentXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/g) || [];
+
+  const markerTable = tables.find((tableXml) =>
+    wordXmlContainsMarker(tableXml, marker)
+  );
+
+  if (!markerTable) {
+    console.warn(
+      `Could not find a Word table containing ${marker}. The metadata table was not removed.`
+    );
+
+    return documentXml;
+  }
+
+  return documentXml.replace(markerTable, '');
+}
+
+/**
+ * Removes a simple marker while keeping the surrounding content.
+ *
+ * This is used when the metadata table is included, so the marker does not
+ * appear in the final document.
+ *
+ * Note: if Word splits this marker across runs, it may not remove the split
+ * version. That is harmless if the marker is hidden in a tiny cell/row, but
+ * best practice is to type [[METADATA_TABLE]] as plain text in one go.
  */
 function removeMarkerText(documentXml: string, marker: string): string {
   return documentXml.split(marker).join('');
