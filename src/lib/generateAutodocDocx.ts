@@ -38,18 +38,12 @@ const BODY_FONT_SIZE = 22;
  *
  * Template requirements:
  * - Metadata placeholders should use square markers:
- *   [[DOCUMENT_TYPE]]
  *   [[DOCUMENT_TITLE]]
  *   [[ORG_NAME]]
  *   [[CLIENT_NAME]]
  *   [[CLIENT_EMAIL]]
  *   [[USER_EMAIL]]
  *   [[ISSUE_DATE]]
- *
- * - Optional metadata/details section:
- *   Put [[METADATA_START]] before the details block/table and
- *   [[METADATA_END]] after it. If the user unticks the export option,
- *   everything between those markers is removed.
  *
  * - The repeating section area should be a Word table row containing:
  *   [[SECTION_TITLE]] in the left column
@@ -193,204 +187,67 @@ function removeParagraphContainingMarker(
 }
 
 /**
- * Removes everything between two markers, including the paragraphs containing
- * the start and end markers.
+ * Gets the visible text from a chunk of Word XML.
  *
- * This is used for optional blocks such as the cover-page details section.
- * In the Word template, place [[METADATA_START]] before the metadata/details
- * block or table, and [[METADATA_END]] after it.
+ * Word often splits placeholder text across multiple XML runs, so searching
+ * the raw XML for [[METADATA_TABLE]] is not always reliable.
  *
- * This is safer than trying to remove a specific Word table, especially when
- * the cover design uses headers, nested tables, or other complex Word XML.
+ * By removing XML tags first, this can still detect the marker even when Word
+ * has split it internally.
  */
-function removeBlockBetweenMarkers(
-  xml: string,
-  startMarker: string,
-  endMarker: string
-): string {
-  const startIndex = xml.indexOf(startMarker);
-  const endIndex = xml.indexOf(endMarker);
+function visibleTextFromWordXml(xml: string): string {
+  return xml.replace(/<[^>]+>/g, '');
+}
 
-  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+/**
+ * Returns true when a Word XML block contains a marker.
+ *
+ * Checks both:
+ * - raw XML, for simple placeholders
+ * - visible text, for placeholders split across Word runs
+ */
+function wordXmlContainsMarker(xml: string, marker: string): boolean {
+  return xml.includes(marker) || visibleTextFromWordXml(xml).includes(marker);
+}
+
+/**
+ * Removes the whole Word table containing a marker.
+ *
+ * Used for the optional metadata/version-control table.
+ *
+ * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
+ * If the user unticks the checkbox, this removes the entire table.
+ */
+function removeTableContainingMarker(documentXml: string, marker: string): string {
+  const tables = documentXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/g) || [];
+
+  const markerTable = tables.find((tableXml) =>
+    wordXmlContainsMarker(tableXml, marker)
+  );
+
+  if (!markerTable) {
     console.warn(
-      `Could not find optional block markers ${startMarker} and ${endMarker}.`
+      `Could not find a Word table containing ${marker}. The metadata table was not removed.`
     );
 
-    return xml;
+    return documentXml;
   }
 
-  const blockStart = xml.lastIndexOf('<w:p', startIndex);
-  const endParagraphClose = xml.indexOf('</w:p>', endIndex);
-
-  if (blockStart === -1 || endParagraphClose === -1) {
-    return xml.slice(0, startIndex) + xml.slice(endIndex + endMarker.length);
-  }
-
-  return xml.slice(0, blockStart) + xml.slice(endParagraphClose + '</w:p>'.length);
+  return documentXml.replace(markerTable, '');
 }
 
 /**
- * Removes optional block marker text while keeping the block itself.
+ * Removes a simple marker while keeping the surrounding content.
  *
- * Used when the user chooses to include the metadata/details section, so the
- * markers do not appear in the generated document.
- */
-function removeOptionalBlockMarkers(
-  xml: string,
-  startMarker: string,
-  endMarker: string
-): string {
-  return xml
-    .split(startMarker)
-    .join('')
-    .split(endMarker)
-    .join('');
-}
-
-/**
- * Applies all optional template-block rules to a Word XML part.
+ * This is used when the metadata table is included, so the marker does not
+ * appear in the final document.
  *
- * We run this against the main document XML and also against headers/footers,
- * because Word templates often place cover-page artwork and details in header
- * parts rather than in the normal document body.
+ * Note: if Word splits this marker across runs, it may not remove the split
+ * version. That is harmless if the marker is hidden in a tiny cell/row, but
+ * best practice is to type [[METADATA_TABLE]] as plain text in one go.
  */
-function applyOptionalTemplateBlocks(
-  xml: string,
-  options: {
-    documentType: string;
-    includeMetadataTable?: boolean;
-  }
-): string {
-  let output = xml;
-
-  if (!options.documentType) {
-    output = removeParagraphContainingMarker(output, '[[DOCUMENT_TYPE]]');
-  }
-
-  if (options.includeMetadataTable === false) {
-    output = removeBlockBetweenMarkers(
-      output,
-      '[[METADATA_START]]',
-      '[[METADATA_END]]'
-    );
-  } else {
-    output = removeOptionalBlockMarkers(
-      output,
-      '[[METADATA_START]]',
-      '[[METADATA_END]]'
-    );
-  }
-
-  return output;
-}
-
-/**
- * Sets or inserts a simple XML element in docProps XML.
- */
-function setXmlElement(
-  xml: string,
-  elementName: string,
-  value: string,
-  attributes = ''
-): string {
-  const escapedValue = escapeXml(value);
-  const replacement = `<${elementName}${attributes}>${escapedValue}</${elementName}>`;
-  const existingElementRegex = new RegExp(
-    `<${elementName}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${elementName}>`
-  );
-
-  if (existingElementRegex.test(xml)) {
-    return xml.replace(existingElementRegex, replacement);
-  }
-
-  const closingCoreProperties = '</cp:coreProperties>';
-  const closingProperties = '</Properties>';
-
-  if (xml.includes(closingCoreProperties)) {
-    return xml.replace(closingCoreProperties, `${replacement}${closingCoreProperties}`);
-  }
-
-  if (xml.includes(closingProperties)) {
-    return xml.replace(closingProperties, `${replacement}${closingProperties}`);
-  }
-
-  return xml;
-}
-
-/**
- * Writes real Word document properties into docProps/core.xml.
- *
- * These show up in Word under File > Info > Properties. The most important
- * values for AUTODOC are the creator and the generated timestamp.
- */
-function applyCoreDocumentProperties(
-  zip: PizZip,
-  options: {
-    documentTitle: string;
-    documentType: string;
-    creator: string;
-    createdIso: string;
-  }
-): void {
-  const coreFile = zip.file('docProps/core.xml');
-
-  if (!coreFile) {
-    console.warn('Could not find docProps/core.xml. Word metadata was not updated.');
-    return;
-  }
-
-  let coreXml = coreFile.asText();
-  const description = [options.documentType, options.documentTitle]
-    .filter(Boolean)
-    .join(' - ');
-
-  coreXml = setXmlElement(coreXml, 'dc:title', options.documentTitle);
-  coreXml = setXmlElement(coreXml, 'dc:subject', options.documentType || 'AUTODOC document');
-  coreXml = setXmlElement(coreXml, 'dc:creator', options.creator);
-  coreXml = setXmlElement(coreXml, 'dc:description', description || options.documentTitle);
-  coreXml = setXmlElement(coreXml, 'cp:lastModifiedBy', options.creator);
-  coreXml = setXmlElement(coreXml, 'cp:keywords', 'AUTODOC; Zenzero');
-  coreXml = setXmlElement(
-    coreXml,
-    'dcterms:created',
-    options.createdIso,
-    ' xsi:type="dcterms:W3CDTF"'
-  );
-  coreXml = setXmlElement(
-    coreXml,
-    'dcterms:modified',
-    options.createdIso,
-    ' xsi:type="dcterms:W3CDTF"'
-  );
-
-  zip.file('docProps/core.xml', coreXml);
-}
-
-/**
- * Writes optional extended Word properties into docProps/app.xml.
- *
- * These are less important than core.xml, but help Word identify the document
- * as a Zenzero/AUTODOC-generated file.
- */
-function applyExtendedDocumentProperties(
-  zip: PizZip,
-  options: {
-    creator: string;
-  }
-): void {
-  const appFile = zip.file('docProps/app.xml');
-
-  if (!appFile) {
-    return;
-  }
-
-  let appXml = appFile.asText();
-
-  appXml = setXmlElement(appXml, 'Company', 'Zenzero');
-  appXml = setXmlElement(appXml, 'Manager', options.creator);
-  appXml = setXmlElement(appXml, 'Application', 'AUTODOC');
-
-  zip.file('docProps/app.xml', appXml);
+function removeMarkerText(documentXml: string, marker: string): string {
+  return documentXml.split(marker).join('');
 }
 
 /**
@@ -1587,19 +1444,24 @@ export async function generateAutodocDocx({
     imageCounter: 0,
   };
 
-  const createdIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const creator =
-    typeof metadata.userEmail === 'string' && metadata.userEmail.trim()
-      ? metadata.userEmail.trim()
-      : 'Zenzero';
-
   let documentXml = documentFile.asText();
 
-  // Optional blocks must be processed before normal placeholder replacement.
-  documentXml = applyOptionalTemplateBlocks(documentXml, {
-    documentType,
-    includeMetadataTable: metadata.includeMetadataTable,
-  });
+  // Remove optional blocks before replacing normal placeholders.
+  if (!documentType) {
+    documentXml = removeParagraphContainingMarker(
+      documentXml,
+      '[[DOCUMENT_TYPE]]'
+    );
+  }
+
+  if (metadata.includeMetadataTable === false) {
+    documentXml = removeTableContainingMarker(
+      documentXml,
+      '[[METADATA_TABLE]]'
+    );
+  } else {
+    documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
+  }
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
   documentXml = await replaceSectionTableRows(
@@ -1610,28 +1472,15 @@ export async function generateAutodocDocx({
 
   zip.file('word/document.xml', documentXml);
 
-  // Headers and footers may contain cover-page artwork and placeholders.
+  // Replace metadata placeholders in headers and footers too.
   const headerFooterFiles = zip.file(/^word\/(header|footer)\d+\.xml$/);
 
   headerFooterFiles.forEach((file) => {
-    let updatedXml = file.asText();
-
-    updatedXml = applyOptionalTemplateBlocks(updatedXml, {
-      documentType,
-      includeMetadataTable: metadata.includeMetadataTable,
-    });
-    updatedXml = replaceAllPlaceholders(updatedXml, replacements);
-
+    const originalXml = file.asText();
+    const updatedXml = replaceAllPlaceholders(originalXml, replacements);
     zip.file(file.name, updatedXml);
   });
 
-  applyCoreDocumentProperties(zip, {
-    documentTitle: title,
-    documentType,
-    creator,
-    createdIso,
-  });
-  applyExtendedDocumentProperties(zip, { creator });
   applyImageRelationshipsAndContentTypes(zip, imageContext);
 
   const outputBlob = zip.generate({
