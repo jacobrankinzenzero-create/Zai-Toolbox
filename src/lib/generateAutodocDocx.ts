@@ -1,14 +1,21 @@
 import PizZip from 'pizzip';
 import { saveAs } from 'file-saver';
 
-
-const BODY_FONT_SIZE = 22;
-
+/**
+ * Word style IDs used by the AUTODOC template.
+ *
+ * These must match the internal Word style IDs in the .docx template.
+ * The names below are the style names the user has created in Word:
+ * - AUTODOCBulletLevel1: normal/top-level AUTODOC body bullet
+ * - AUTODOCBulletLevel2: user-created bulleted lists
+ * - AUTODOCNumberList1: user-created numbered lists
+ */
 const AUTODOC_BULLET_LEVEL_1_STYLE = 'AUTODOCBulletLevel1';
 const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletLevel2';
-const NUMBERED_LIST_LEFT_INDENT = 1080;
-const NUMBERED_LIST_HANGING_INDENT = 360;
-const NUMBERED_LIST_LEVEL_STEP = 360;
+const AUTODOC_NUMBER_LIST_1_STYLE = 'AUTODOCNumberList1';
+
+const BODY_TEXT_COLOR = '242424';
+const BODY_FONT_SIZE = 22;
 
 /**
  * AUTODOC Word export generator.
@@ -93,14 +100,6 @@ type ImageBuildContext = {
 
 const EMUS_PER_INCH = 914400;
 const PX_PER_INCH = 96;
-const BODY_TEXT_COLOR = '242424';
-const CHEVRON_ORANGE = 'FF8300';
-const CHEVRON_MUTED = 'D8E7E7';
-
-// Word font sizes are in half-points.
-// 22 = 11pt body text.
-// 20 = 10pt, roughly 90% of 11pt.
-const CHEVRON_FONT_SIZE = 20;
 
 /**
  * Escapes user/app text before placing it inside Word XML.
@@ -223,21 +222,46 @@ function paragraphXml(
 ): string {
   const pPrParts: string[] = [];
 
-  // Apply a Word paragraph style from the template.
-  // Example: AUTODOCBulletLevel2
-  // This lets Word control bullets, chevrons, indentation, spacing, etc.
+  /**
+   * Applies a Word paragraph style from the template.
+   *
+   * This is what lets the Word template control things like:
+   * - orange chevrons
+   * - grey secondary bullets
+   * - numbered-list formatting
+   * - indentation
+   * - spacing
+   *
+   * Example:
+   * style: 'AUTODOCBulletLevel2'
+   * style: 'AUTODOCNumberList1'
+   */
   if (options?.style) {
     pPrParts.push(`<w:pStyle w:val="${options.style}"/>`);
   }
 
-  // Optional manual spacing override.
+  /**
+   * Optional spacing override.
+   *
+   * Use this when you want consistent paragraph spacing.
+   * If you want the Word style to control all spacing, remove this option
+   * from the calling code instead of changing this function.
+   */
   if (typeof options?.spacingAfter === 'number') {
     pPrParts.push(`<w:spacing w:after="${options.spacingAfter}"/>`);
   }
 
-  // Optional manual indent override.
-  // Do NOT pass indentLeft/hanging when using Word bullet styles unless you
-  // intentionally want to override the template's indentation.
+  /**
+   * Optional manual indentation.
+   *
+   * Important:
+   * For Word-template list styles such as:
+   * - AUTODOCBulletLevel2
+   * - AUTODOCNumberList1
+   *
+   * do NOT pass indentLeft or hanging, because that can override/fight
+   * the indentation defined in the Word template style.
+   */
   if (
     typeof options?.indentLeft === 'number' ||
     typeof options?.hanging === 'number'
@@ -255,7 +279,10 @@ function paragraphXml(
     pPrParts.push(`<w:ind ${indentParts.join(' ')}/>`);
   }
 
-  const pPr = pPrParts.length > 0 ? `<w:pPr>${pPrParts.join('')}</w:pPr>` : '';
+  const pPr =
+    pPrParts.length > 0
+      ? `<w:pPr>${pPrParts.join('')}</w:pPr>`
+      : '';
 
   return `<w:p>${pPr}${content}</w:p>`;
 }
@@ -389,93 +416,17 @@ function hasBlockChildren(element: Element): boolean {
   return Array.from(element.childNodes).some(isBlockElement);
 }
 /**
- * Extracts the visible text/runs from a Tiptap list item.
- *
- * Tiptap commonly outputs list items like:
- *
- * <li>
- *   <p>Item text</p>
- *   <ul>...</ul>
- * </li>
- *
- * This helper pulls the item text out of p/div/span/text nodes while ignoring
- * nested ul/ol lists, which are handled separately.
- */
-
-/**
- * Converts HTML lists into Word paragraphs.
- *
- * Unordered lists use the secondary Word bullet style from the template.
- * This means user-created bullet lists render as the template's level-2
- * grey/secondary chevron, rather than a manually inserted character.
- *
- * Ordered lists are still generated as plain black numbers for now.
- * If you later create a Word numbered-list style in the template, this can
- * be updated to apply that style instead.
- */
-/**
- * Converts HTML lists into Word paragraphs.
- *
- * Unordered lists:
- * - Use AUTODOCBodyBullet2 from the Word template.
- * - This means user-created bullet lists appear as the secondary/grey list level.
- *
- * Ordered lists:
- * - Use black manual numbering.
- * - Indented to visually match the secondary list level.
- */
-/**
- * Converts HTML lists into Word paragraphs.
- *
- * AUTODOC documents already use a primary body bullet style for normal
- * paragraphs, so user-created lists should start visually one level deeper.
- *
- * Unordered lists:
- * - Use the Word template's secondary bullet style.
- * - If the style ID is wrong/missing, the item text should still appear.
- *
- * Ordered lists:
- * - Render as black manual numbers.
- * - Indented to match the secondary bullet level.
- */
-/**
- * Extracts visible text/runs from a Tiptap list item.
- *
- * Tiptap commonly outputs:
- *
- * <li>
- *   <p>Item text</p>
- *   <ul>Nested item</ul>
- * </li>
- *
- * This pulls out the visible item text while ignoring nested lists,
- * which are handled separately.
- */
-/**
- * Extracts visible text/runs from a Tiptap list item.
- *
- * Tiptap commonly outputs:
- *
- * <li>
- *   <p>Item text</p>
- *   <ul>Nested item</ul>
- * </li>
- *
- * This pulls out the visible item text while ignoring nested lists,
- * which are handled separately.
- */
-/**
  * Extracts visible text/runs from a Tiptap list item.
  *
  * Tiptap commonly outputs list items like:
  *
  * <li>
  *   <p>Item text</p>
- *   <ul>Nested bullet</ul>
+ *   <ul>Nested item</ul>
  * </li>
  *
- * This function pulls the visible item text out of the <li>, while ignoring
- * nested <ul>/<ol> lists. Nested lists are handled separately by listXml().
+ * This pulls the visible item text out of the <li>, while ignoring nested
+ * <ul>/<ol> lists. Nested lists are handled separately by listXml().
  */
 function listItemContentToRuns(item: Element): string {
   const childNodes = Array.from(item.childNodes);
@@ -520,13 +471,13 @@ function listItemContentToRuns(item: Element): string {
  * Converts HTML lists from Tiptap into Word paragraphs.
  *
  * Bulleted lists:
- * - Apply the Word template paragraph style AUTODOCBulletLevel2.
- * - The template controls the bullet/chevron, indentation, colour, and spacing.
- * - We do NOT manually render the chevron here.
+ * - apply AUTODOCBulletLevel2 from the Word template.
  *
  * Numbered lists:
- * - Render black manual numbers for now.
- * - Indent to match the secondary list level.
+ * - apply AUTODOCNumberList1 from the Word template.
+ *
+ * No bullet or number characters are manually rendered here. Word owns the
+ * numbering/bullet appearance, indentation, spacing, and wrapping.
  */
 function listXml(list: HTMLElement, level = 0, ordered = false): string {
   const items = Array.from(list.children).filter(
@@ -534,7 +485,7 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
   );
 
   return items
-    .map((item, index) => {
+    .map((item) => {
       const itemContent = listItemContentToRuns(item);
 
       const nestedLists = Array.from(item.childNodes).filter((node) => {
@@ -547,29 +498,14 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
         return tag === 'ul' || tag === 'ol';
       }) as HTMLElement[];
 
-      let currentItemXml = '';
+      const listStyle = ordered
+        ? AUTODOC_NUMBER_LIST_1_STYLE
+        : AUTODOC_BULLET_LEVEL_2_STYLE;
 
-      if (ordered) {
-        const numberedIndentLeft =
-          NUMBERED_LIST_LEFT_INDENT + level * NUMBERED_LIST_LEVEL_STEP;
-
-        currentItemXml = paragraphXml(
-          runXml(`${index + 1}. `, {
-            color: BODY_TEXT_COLOR,
-            fontSizeHalfPoints: BODY_FONT_SIZE,
-          }) + itemContent,
-          {
-            spacingAfter: 80,
-            indentLeft: numberedIndentLeft,
-            hanging: NUMBERED_LIST_HANGING_INDENT,
-          }
-        );
-      } else {
-        currentItemXml = paragraphXml(itemContent || runXml(''), {
-          style: 'AUTODOCBulletLevel2',
-          spacingAfter: 80,
-        });
-      }
+      const currentItemXml = paragraphXml(itemContent || runXml(''), {
+        style: listStyle,
+        spacingAfter: 80,
+      });
 
       const nestedXml = nestedLists
         .map((nested) =>
@@ -581,6 +517,7 @@ function listXml(list: HTMLElement, level = 0, ordered = false): string {
     })
     .join('');
 }
+
 /**
  * Converts the content inside an HTML table cell into Word XML.
  *
