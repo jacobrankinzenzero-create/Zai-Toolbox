@@ -1235,7 +1235,7 @@ export default function App() {
     setModalConfig({
       title: 'Export document details',
       message:
-        'Review the document details below. These are used to populate the Word template.',
+        'Review the document details below. These are used to populate the Word template and Word file metadata.',
       inputs: [
         {
           id: 'documentType',
@@ -1246,7 +1246,7 @@ export default function App() {
         },
         {
           id: 'userEmail',
-          label: 'Zenzero contact',
+          label: 'Created by / Zenzero contact',
           type: 'email',
           placeholder: 'yourname@zenzero.co.uk',
           required: false,
@@ -1274,7 +1274,7 @@ export default function App() {
         },
         {
           id: 'includeMetadataTable',
-          label: 'Include document details table in final document',
+          label: 'Include document details section in final document',
           type: 'checkbox',
           required: false,
         },
