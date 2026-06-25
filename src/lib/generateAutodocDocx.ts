@@ -1,61 +1,6 @@
 import PizZip from 'pizzip';
 import { saveAs } from 'file-saver';
-/**
- * Removes the optional metadata/details block from the main document body.
- *
- * The Word template should contain:
- * [[METADATA_START]]
- * [metadata table here]
- * [[METADATA_END]]
- *
- * This removes from the paragraph containing [[METADATA_START]] through to
- * the paragraph containing [[METADATA_END]].
- */
-function removeBlockBetweenMarkers(
-  documentXml: string,
-  startMarker: string,
-  endMarker: string
-): string {
-  const startIndex = documentXml.indexOf(startMarker);
-  const endIndex = documentXml.indexOf(endMarker);
 
-  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
-    return documentXml;
-  }
-
-  const blockStart = documentXml.lastIndexOf('<w:p', startIndex);
-  const endParagraphClose = documentXml.indexOf('</w:p>', endIndex);
-
-  if (blockStart === -1 || endParagraphClose === -1) {
-    return (
-      documentXml.slice(0, startIndex) +
-      documentXml.slice(endIndex + endMarker.length)
-    );
-  }
-
-  return (
-    documentXml.slice(0, blockStart) +
-    documentXml.slice(endParagraphClose + '</w:p>'.length)
-  );
-}
-
-/**
- * Removes only the metadata block markers while keeping the metadata table.
- *
- * Used when the user ticks:
- * "Include document details table in final document".
- */
-function removeOptionalBlockMarkers(
-  documentXml: string,
-  startMarker: string,
-  endMarker: string
-): string {
-  return documentXml
-    .split(startMarker)
-    .join('')
-    .split(endMarker)
-    .join('');
-}
 /**
  * Word style IDs used by the AUTODOC template.
  *
@@ -68,6 +13,23 @@ function removeOptionalBlockMarkers(
 const AUTODOC_BULLET_LEVEL_1_STYLE = 'AUTODOCBulletLevel1';
 const AUTODOC_BULLET_LEVEL_2_STYLE = 'AUTODOCBulletLevel2';
 const AUTODOC_NUMBER_LIST_1_STYLE = 'AUTODOCNumberList1';
+
+/**
+ * Template files.
+ *
+ * This is intentionally a two-template setup. It is much safer than trying to
+ * delete Word tables from inside the generated .docx XML. Word stores headers,
+ * tables, shapes, and nested layouts in complicated XML, so deleting blocks by
+ * code can corrupt the file.
+ *
+ * Put both files in:
+ *   public/templates/
+ *
+ * The no-metadata version should be a normal Word copy of the template with the
+ * visible metadata/details table manually removed.
+ */
+const TEMPLATE_WITH_METADATA = 'autodoc-sow-template.docx';
+const TEMPLATE_WITHOUT_METADATA = 'autodoc-sow-template-no-metadata.docx';
 
 const BODY_TEXT_COLOR = '242424';
 const BODY_FONT_SIZE = 22;
@@ -93,12 +55,18 @@ const BODY_FONT_SIZE = 22;
  *
  * Template requirements:
  * - Metadata placeholders should use square markers:
+ *   [[DOCUMENT_TYPE]]
  *   [[DOCUMENT_TITLE]]
  *   [[ORG_NAME]]
  *   [[CLIENT_NAME]]
  *   [[CLIENT_EMAIL]]
  *   [[USER_EMAIL]]
  *   [[ISSUE_DATE]]
+ *
+ * - Optional metadata/details table:
+ *   Do not remove this with XML surgery. Instead, maintain two templates:
+ *   one with the details table and one without it. The export checkbox chooses
+ *   which template is loaded. This is the safest approach for Word files.
  *
  * - The repeating section area should be a Word table row containing:
  *   [[SECTION_TITLE]] in the left column
@@ -239,70 +207,6 @@ function removeParagraphContainingMarker(
   }
 
   return documentXml.replace(markerParagraph, '');
-}
-
-/**
- * Gets the visible text from a chunk of Word XML.
- *
- * Word often splits placeholder text across multiple XML runs, so searching
- * the raw XML for [[METADATA_TABLE]] is not always reliable.
- *
- * By removing XML tags first, this can still detect the marker even when Word
- * has split it internally.
- */
-function visibleTextFromWordXml(xml: string): string {
-  return xml.replace(/<[^>]+>/g, '');
-}
-
-/**
- * Returns true when a Word XML block contains a marker.
- *
- * Checks both:
- * - raw XML, for simple placeholders
- * - visible text, for placeholders split across Word runs
- */
-function wordXmlContainsMarker(xml: string, marker: string): boolean {
-  return xml.includes(marker) || visibleTextFromWordXml(xml).includes(marker);
-}
-
-/**
- * Removes the whole Word table containing a marker.
- *
- * Used for the optional metadata/version-control table.
- *
- * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
- * If the user unticks the checkbox, this removes the entire table.
- */
-function removeTableContainingMarker(documentXml: string, marker: string): string {
-  const tables = documentXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/g) || [];
-
-  const markerTable = tables.find((tableXml) =>
-    wordXmlContainsMarker(tableXml, marker)
-  );
-
-  if (!markerTable) {
-    console.warn(
-      `Could not find a Word table containing ${marker}. The metadata table was not removed.`
-    );
-
-    return documentXml;
-  }
-
-  return documentXml.replace(markerTable, '');
-}
-
-/**
- * Removes a simple marker while keeping the surrounding content.
- *
- * This is used when the metadata table is included, so the marker does not
- * appear in the final document.
- *
- * Note: if Word splits this marker across runs, it may not remove the split
- * version. That is harmless if the marker is hidden in a tiny cell/row, but
- * best practice is to type [[METADATA_TABLE]] as plain text in one go.
- */
-function removeMarkerText(documentXml: string, marker: string): string {
-  return documentXml.split(marker).join('');
 }
 
 /**
@@ -1101,9 +1005,9 @@ function imageDrawingXml(
   return `
     <w:p>
       <w:pPr>
-  <w:jc w:val="center"/>
-  <w:spacing w:before="120" w:after="160"/>
-</w:pPr>
+        <w:jc w:val="center"/>
+        <w:spacing w:before="120" w:after="160"/>
+      </w:pPr>
       <w:r>
         <w:drawing>
           <wp:inline distT="0" distB="0" distL="0" distR="0"
@@ -1441,6 +1345,107 @@ function applyImageRelationshipsAndContentTypes(
   zip.file('[Content_Types].xml', contentTypesXml);
 }
 
+
+/**
+ * Replaces or appends a simple XML element.
+ *
+ * Used for Word document properties in docProps/core.xml and docProps/app.xml.
+ * This only touches small property files, not the main document layout, so it is
+ * much safer than removing Word tables or body blocks by string surgery.
+ */
+function setXmlElementText(
+  xml: string,
+  tagName: string,
+  value: string,
+  attributes = ''
+): string {
+  const safeValue = escapeXml(value);
+  const attrText = attributes ? ` ${attributes}` : '';
+  const elementXml = `<${tagName}${attrText}>${safeValue}</${tagName}>`;
+  const existingElementRegex = new RegExp(
+    `<${tagName}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${tagName}>`
+  );
+
+  if (existingElementRegex.test(xml)) {
+    return xml.replace(existingElementRegex, elementXml);
+  }
+
+  return xml.replace(/<\/[^>]+>\s*$/, `${elementXml}$&`);
+}
+
+/**
+ * Creates a minimal Word core properties file if the template does not include
+ * one. Most .docx files already have docProps/core.xml, but this makes the
+ * exporter more defensive.
+ */
+function createCorePropertiesXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties
+  xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:dcterms="http://purl.org/dc/terms/"
+  xmlns:dcmitype="http://purl.org/dc/dcmitype/"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+</cp:coreProperties>`;
+}
+
+/**
+ * Writes safe Word document properties.
+ *
+ * This sets the fields shown in Word under File > Info > Properties, including:
+ * - Title
+ * - Subject
+ * - Author / Creator
+ * - Last Modified By
+ * - Created timestamp
+ * - Modified timestamp
+ *
+ * Note: the downloaded file name is not a stable internal Word property before
+ * the user saves the file locally, so we control the filename through saveAs()
+ * instead.
+ */
+function applyDocumentProperties(
+  zip: PizZip,
+  options: {
+    title: string;
+    documentType: string;
+    creator: string;
+    createdIso: string;
+  }
+): void {
+  const creator = options.creator || 'Zenzero';
+  const subject = options.documentType || 'AUTODOC document';
+
+  let coreXml = zip.file('docProps/core.xml')?.asText() || createCorePropertiesXml();
+
+  coreXml = setXmlElementText(coreXml, 'dc:title', options.title);
+  coreXml = setXmlElementText(coreXml, 'dc:subject', subject);
+  coreXml = setXmlElementText(coreXml, 'dc:creator', creator);
+  coreXml = setXmlElementText(coreXml, 'cp:lastModifiedBy', creator);
+  coreXml = setXmlElementText(
+    coreXml,
+    'dcterms:created',
+    options.createdIso,
+    'xsi:type="dcterms:W3CDTF"'
+  );
+  coreXml = setXmlElementText(
+    coreXml,
+    'dcterms:modified',
+    options.createdIso,
+    'xsi:type="dcterms:W3CDTF"'
+  );
+
+  zip.file('docProps/core.xml', coreXml);
+
+  const appFile = zip.file('docProps/app.xml');
+
+  if (appFile) {
+    let appXml = appFile.asText();
+    appXml = setXmlElementText(appXml, 'Company', 'Zenzero');
+    zip.file('docProps/app.xml', appXml);
+  }
+}
+
 /**
  * Main export function called by AUTODOC.
  *
@@ -1451,13 +1456,18 @@ export async function generateAutodocDocx({
   sections,
   metadata,
 }: GenerateAutodocDocxInput): Promise<void> {
+  const templateFileName =
+    metadata.includeMetadataTable === false
+      ? TEMPLATE_WITHOUT_METADATA
+      : TEMPLATE_WITH_METADATA;
+
   const response = await fetch(
-    `/templates/autodoc-sow-template.docx?v=${Date.now()}`
+    `/templates/${templateFileName}?v=${Date.now()}`
   );
 
   if (!response.ok) {
     throw new Error(
-      'Could not load the AUTODOC Word template. Check that public/templates/autodoc-sow-template.docx exists.'
+      `Could not load the AUTODOC Word template: ${templateFileName}. Check that it exists in public/templates/.`
     );
   }
 
@@ -1501,27 +1511,15 @@ export async function generateAutodocDocx({
 
   let documentXml = documentFile.asText();
 
-  // Remove optional blocks before replacing normal placeholders.
+  // Remove the optional subtitle paragraph only from the main document body.
+  // The metadata/details table is handled by choosing one of two templates, so
+  // we intentionally do not delete any metadata table XML here.
   if (!documentType) {
     documentXml = removeParagraphContainingMarker(
       documentXml,
       '[[DOCUMENT_TYPE]]'
     );
   }
-
-if (metadata.includeMetadataTable === false) {
-  documentXml = removeBlockBetweenMarkers(
-    documentXml,
-    '[[METADATA_START]]',
-    '[[METADATA_END]]'
-  );
-} else {
-  documentXml = removeOptionalBlockMarkers(
-    documentXml,
-    '[[METADATA_START]]',
-    '[[METADATA_END]]'
-  );
-}
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
   documentXml = await replaceSectionTableRows(
@@ -1542,6 +1540,13 @@ if (metadata.includeMetadataTable === false) {
   });
 
   applyImageRelationshipsAndContentTypes(zip, imageContext);
+
+  applyDocumentProperties(zip, {
+    title,
+    documentType,
+    creator: metadata.userEmail || 'Zenzero',
+    createdIso: new Date().toISOString(),
+  });
 
   const outputBlob = zip.generate({
     type: 'blob',

@@ -59,6 +59,17 @@ interface TableContext {
 
 const BRAND_COLOR = '#ff8300';
 
+/**
+ * Default export metadata.
+ *
+ * This object is used in three places:
+ * 1. First page load, when there is no saved metadata yet.
+ * 2. Opening the export modal, so missing fields are filled consistently.
+ * 3. Creating the export payload sent to generateAutodocDocx().
+ *
+ * includeMetadataTable defaults to true because the full corporate cover page
+ * should be included unless the user explicitly unticks the checkbox.
+ */
 const DEFAULT_EXPORT_DATA: ExportData = {
   userEmail: '',
   orgName: '',
@@ -1203,27 +1214,35 @@ export default function App() {
     []
   );
 
+  /**
+   * Builds and downloads the Word document.
+   *
+   * The metadata payload controls:
+   * - document cover placeholders
+   * - document type / subtitle
+   * - whether the generator loads the template with or without metadata table
+   */
   const executeExport = useCallback(
-  async (metadataOverride?: ExportData) => {
-    try {
-      await generateAutodocDocx({
-        documentTitle,
-        sections,
-        metadata: metadataOverride || exportData,
-      });
-    } catch (error) {
-      console.error(error);
+    async (metadataOverride?: ExportData) => {
+      try {
+        await generateAutodocDocx({
+          documentTitle,
+          sections,
+          metadata: metadataOverride || exportData,
+        });
+      } catch (error) {
+        console.error(error);
 
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Could not generate the Word document.';
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Could not generate the Word document.';
 
-      alert(message);
-    }
-  },
-  [documentTitle, sections, exportData]
-);
+        alert(message);
+      }
+    },
+    [documentTitle, sections, exportData]
+  );
 
   const handleExportClick = useCallback(() => {
     setModalData({
@@ -1235,7 +1254,7 @@ export default function App() {
     setModalConfig({
       title: 'Export document details',
       message:
-        'Review the document details below. These are used to populate the Word template and Word file metadata.',
+        'Review the document details below. The checkbox chooses between the full template and the no-metadata template.',
       inputs: [
         {
           id: 'documentType',
@@ -1246,7 +1265,7 @@ export default function App() {
         },
         {
           id: 'userEmail',
-          label: 'Created by / Zenzero contact',
+          label: 'Zenzero contact',
           type: 'email',
           placeholder: 'yourname@zenzero.co.uk',
           required: false,
@@ -1274,7 +1293,7 @@ export default function App() {
         },
         {
           id: 'includeMetadataTable',
-          label: 'Include document details section in final document',
+          label: 'Include document details table in final document',
           type: 'checkbox',
           required: false,
         },
@@ -1282,6 +1301,8 @@ export default function App() {
       confirmText: 'Generate & Download',
       isDestructive: false,
       action: async (data) => {
+        // Preserve false explicitly. This matters because the generator uses
+        // includeMetadataTable === false to load the no-metadata template.
         const exportPayload: ExportData = {
           ...DEFAULT_EXPORT_DATA,
           ...data,
@@ -1575,49 +1596,53 @@ export default function App() {
             </h3>
             <p className="text-gray-500 text-xs mb-4">{modalConfig.message}</p>
 
-            {modalConfig.inputs?.map((input) => {
-  if (input.type === 'checkbox') {
-    return (
-      <label
-        key={input.id}
-        className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700"
-      >
-        <input
-          type="checkbox"
-          checked={modalData[input.id] !== false}
-          onChange={(e) =>
-            setModalData({
-              ...modalData,
-              [input.id]: e.target.checked,
-            })
-          }
-          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#ff8300] focus:ring-[#ff8300]"
-        />
-        <span>{input.label}</span>
-      </label>
-    );
-  }
+            {modalConfig.inputs && (
+              <div className="space-y-3.5 mb-2">
+                {modalConfig.inputs.map((input) => {
+                  if (input.type === 'checkbox') {
+                    return (
+                      <label
+                        key={input.id}
+                        className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={modalData[input.id] !== false}
+                          onChange={(e) =>
+                            setModalData({
+                              ...modalData,
+                              [input.id]: e.target.checked,
+                            })
+                          }
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#ff8300] focus:ring-[#ff8300]"
+                        />
+                        <span>{input.label}</span>
+                      </label>
+                    );
+                  }
 
-  return (
-    <div key={input.id}>
-      <label className="block text-xs font-bold text-gray-700 mb-1">
-        {input.label}
-      </label>
-      <input
-        type={input.type}
-        placeholder={input.placeholder}
-        value={String(modalData[input.id] || '')}
-        onChange={(e) =>
-          setModalData({
-            ...modalData,
-            [input.id]: e.target.value,
-          })
-        }
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8300]/20 focus:border-[#ff8300] text-sm"
-      />
-    </div>
-  );
-})}
+                  return (
+                    <div key={input.id}>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        {input.label}
+                      </label>
+                      <input
+                        type={input.type}
+                        placeholder={input.placeholder}
+                        value={String(modalData[input.id] || '')}
+                        onChange={(e) =>
+                          setModalData({
+                            ...modalData,
+                            [input.id]: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8300]/20 focus:border-[#ff8300] text-sm"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="flex justify-end gap-2.5 mt-6">
               <button
@@ -1628,17 +1653,17 @@ export default function App() {
                 Cancel
               </button>
               <button
-  type="button"
-  onClick={() => modalConfig.action(modalData)}
-  disabled={false}
-  className={`px-5 py-2 text-xs font-semibold text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${
-    modalConfig.isDestructive
-      ? 'bg-red-500 hover:bg-red-600'
-      : 'bg-[#ff8300] hover:bg-[#e67600]'
-  }`}
->
-  {modalConfig.confirmText}
-</button>
+                type="button"
+                onClick={() => modalConfig.action(modalData)}
+                disabled={false}
+                className={`px-5 py-2 text-xs font-semibold text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${
+                  modalConfig.isDestructive
+                    ? 'bg-red-500 hover:bg-red-600'
+                    : 'bg-[#ff8300] hover:bg-[#e67600]'
+                }`}
+              >
+                {modalConfig.confirmText}
+              </button>
             </div>
           </div>
         </div>
