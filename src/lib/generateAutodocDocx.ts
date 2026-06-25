@@ -211,49 +211,69 @@ function wordXmlContainsMarker(xml: string, marker: string): boolean {
 }
 
 /**
- * Removes the whole Word table containing a marker.
+ * Finds complete Word table ranges, including nested tables.
  *
- * Used for the optional metadata/version-control table.
- *
- * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
- * If the user unticks the checkbox, this removes the entire table.
+ * A simple regex like /<w:tbl...<\/w:tbl>/ is not safe here because the
+ * AUTODOC template contains nested Word tables in the cover-page header.
+ * Removing a partial nested table corrupts the .docx and makes Word refuse to
+ * open it.
  */
-function removeTableContainingMarker(documentXml: string, marker: string): string {
-  const rawMarkerIndex = documentXml.indexOf(marker);
+function getWordTableRanges(xml: string): { start: number; end: number; xml: string }[] {
+  const tableTokenRegex = /<w:tbl\b[^>]*>|<\/w:tbl>/g;
+  const stack: number[] = [];
+  const ranges: { start: number; end: number; xml: string }[] = [];
+  let match: RegExpExecArray | null;
 
-  // Best path: the marker exists as normal text in the XML. Remove the nearest
-  // Word table around that marker. This also handles nested tables better than
-  // a simple global table regex, because it starts from the marker location.
-  if (rawMarkerIndex !== -1) {
-    const tableStart = documentXml.lastIndexOf('<w:tbl', rawMarkerIndex);
-    const tableEnd = documentXml.indexOf('</w:tbl>', rawMarkerIndex);
+  while ((match = tableTokenRegex.exec(xml)) !== null) {
+    const token = match[0];
 
-    if (tableStart !== -1 && tableEnd !== -1) {
-      return (
-        documentXml.slice(0, tableStart) +
-        documentXml.slice(tableEnd + '</w:tbl>'.length)
-      );
+    if (token.startsWith('<w:tbl')) {
+      stack.push(match.index);
+      continue;
+    }
+
+    const start = stack.pop();
+
+    if (typeof start === 'number') {
+      const end = match.index + token.length;
+      ranges.push({
+        start,
+        end,
+        xml: xml.slice(start, end),
+      });
     }
   }
 
-  // Fallback: if Word has split the marker across XML runs, inspect visible
-  // text inside each table. This is less precise, but useful for normal tables
-  // without nested table structures.
-  const tables = documentXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/g) || [];
+  return ranges;
+}
 
-  const markerTable = tables.find((tableXml) =>
-    wordXmlContainsMarker(tableXml, marker)
-  );
+/**
+ * Removes the smallest complete Word table containing a marker.
+ *
+ * Used for the optional metadata/version-control table. The marker should be
+ * typed somewhere inside that metadata table, for example in a tiny final row:
+ * [[METADATA_TABLE]]
+ *
+ * The function deliberately removes the smallest matching table. This matters
+ * because Word templates can contain nested tables, especially inside headers.
+ */
+function removeTableContainingMarker(documentXml: string, marker: string): string {
+  const matchingTable = getWordTableRanges(documentXml)
+    .filter((tableRange) => wordXmlContainsMarker(tableRange.xml, marker))
+    .sort((a, b) => a.xml.length - b.xml.length)[0];
 
-  if (!markerTable) {
+  if (!matchingTable) {
     console.warn(
-      `Could not find a Word table containing ${marker}. The metadata table was not removed.`
+      `Could not find a complete Word table containing ${marker}. The metadata table was not removed.`
     );
 
     return documentXml;
   }
 
-  return documentXml.replace(markerTable, '');
+  return (
+    documentXml.slice(0, matchingTable.start) +
+    documentXml.slice(matchingTable.end)
+  );
 }
 
 /**
@@ -268,35 +288,6 @@ function removeTableContainingMarker(documentXml: string, marker: string): strin
  */
 function removeMarkerText(documentXml: string, marker: string): string {
   return documentXml.split(marker).join('');
-}
-
-/**
- * Applies optional template behaviour to any Word XML part.
- *
- * The AUTODOC cover page is stored in a Word header in this template, not in
- * word/document.xml. That means optional items such as [[DOCUMENT_TYPE]] and
- * [[METADATA_TABLE]] must be handled in document XML and header/footer XML.
- */
-function applyOptionalTemplateBlocks(
-  xml: string,
-  options: {
-    documentType: string;
-    includeMetadataTable: boolean;
-  }
-): string {
-  let output = xml;
-
-  if (!options.documentType) {
-    output = removeParagraphContainingMarker(output, '[[DOCUMENT_TYPE]]');
-  }
-
-  if (!options.includeMetadataTable) {
-    output = removeTableContainingMarker(output, '[[METADATA_TABLE]]');
-  } else {
-    output = removeMarkerText(output, '[[METADATA_TABLE]]');
-  }
-
-  return output;
 }
 
 /**
@@ -1493,15 +1484,24 @@ export async function generateAutodocDocx({
     imageCounter: 0,
   };
 
-  const includeMetadataTable = metadata.includeMetadataTable !== false;
-
   let documentXml = documentFile.asText();
 
   // Remove optional blocks before replacing normal placeholders.
-  documentXml = applyOptionalTemplateBlocks(documentXml, {
-    documentType,
-    includeMetadataTable,
-  });
+  if (!documentType) {
+    documentXml = removeParagraphContainingMarker(
+      documentXml,
+      '[[DOCUMENT_TYPE]]'
+    );
+  }
+
+  if (metadata.includeMetadataTable === false) {
+    documentXml = removeTableContainingMarker(
+      documentXml,
+      '[[METADATA_TABLE]]'
+    );
+  } else {
+    documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
+  }
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
   documentXml = await replaceSectionTableRows(
@@ -1516,16 +1516,8 @@ export async function generateAutodocDocx({
   const headerFooterFiles = zip.file(/^word\/(header|footer)\d+\.xml$/);
 
   headerFooterFiles.forEach((file) => {
-    let updatedXml = file.asText();
-
-    // In the current template, the cover page lives in a Word header. Apply the
-    // same optional-block logic here so the metadata table can be removed.
-    updatedXml = applyOptionalTemplateBlocks(updatedXml, {
-      documentType,
-      includeMetadataTable,
-    });
-
-    updatedXml = replaceAllPlaceholders(updatedXml, replacements);
+    const originalXml = file.asText();
+    const updatedXml = replaceAllPlaceholders(originalXml, replacements);
     zip.file(file.name, updatedXml);
   });
 
