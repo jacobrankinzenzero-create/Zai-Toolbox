@@ -219,6 +219,26 @@ function wordXmlContainsMarker(xml: string, marker: string): boolean {
  * If the user unticks the checkbox, this removes the entire table.
  */
 function removeTableContainingMarker(documentXml: string, marker: string): string {
+  const rawMarkerIndex = documentXml.indexOf(marker);
+
+  // Best path: the marker exists as normal text in the XML. Remove the nearest
+  // Word table around that marker. This also handles nested tables better than
+  // a simple global table regex, because it starts from the marker location.
+  if (rawMarkerIndex !== -1) {
+    const tableStart = documentXml.lastIndexOf('<w:tbl', rawMarkerIndex);
+    const tableEnd = documentXml.indexOf('</w:tbl>', rawMarkerIndex);
+
+    if (tableStart !== -1 && tableEnd !== -1) {
+      return (
+        documentXml.slice(0, tableStart) +
+        documentXml.slice(tableEnd + '</w:tbl>'.length)
+      );
+    }
+  }
+
+  // Fallback: if Word has split the marker across XML runs, inspect visible
+  // text inside each table. This is less precise, but useful for normal tables
+  // without nested table structures.
   const tables = documentXml.match(/<w:tbl[\s\S]*?<\/w:tbl>/g) || [];
 
   const markerTable = tables.find((tableXml) =>
@@ -248,6 +268,35 @@ function removeTableContainingMarker(documentXml: string, marker: string): strin
  */
 function removeMarkerText(documentXml: string, marker: string): string {
   return documentXml.split(marker).join('');
+}
+
+/**
+ * Applies optional template behaviour to any Word XML part.
+ *
+ * The AUTODOC cover page is stored in a Word header in this template, not in
+ * word/document.xml. That means optional items such as [[DOCUMENT_TYPE]] and
+ * [[METADATA_TABLE]] must be handled in document XML and header/footer XML.
+ */
+function applyOptionalTemplateBlocks(
+  xml: string,
+  options: {
+    documentType: string;
+    includeMetadataTable: boolean;
+  }
+): string {
+  let output = xml;
+
+  if (!options.documentType) {
+    output = removeParagraphContainingMarker(output, '[[DOCUMENT_TYPE]]');
+  }
+
+  if (!options.includeMetadataTable) {
+    output = removeTableContainingMarker(output, '[[METADATA_TABLE]]');
+  } else {
+    output = removeMarkerText(output, '[[METADATA_TABLE]]');
+  }
+
+  return output;
 }
 
 /**
@@ -1444,24 +1493,15 @@ export async function generateAutodocDocx({
     imageCounter: 0,
   };
 
+  const includeMetadataTable = metadata.includeMetadataTable !== false;
+
   let documentXml = documentFile.asText();
 
   // Remove optional blocks before replacing normal placeholders.
-  if (!documentType) {
-    documentXml = removeParagraphContainingMarker(
-      documentXml,
-      '[[DOCUMENT_TYPE]]'
-    );
-  }
-
-  if (metadata.includeMetadataTable === false) {
-    documentXml = removeTableContainingMarker(
-      documentXml,
-      '[[METADATA_TABLE]]'
-    );
-  } else {
-    documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
-  }
+  documentXml = applyOptionalTemplateBlocks(documentXml, {
+    documentType,
+    includeMetadataTable,
+  });
 
   documentXml = replaceAllPlaceholders(documentXml, replacements);
   documentXml = await replaceSectionTableRows(
@@ -1476,8 +1516,16 @@ export async function generateAutodocDocx({
   const headerFooterFiles = zip.file(/^word\/(header|footer)\d+\.xml$/);
 
   headerFooterFiles.forEach((file) => {
-    const originalXml = file.asText();
-    const updatedXml = replaceAllPlaceholders(originalXml, replacements);
+    let updatedXml = file.asText();
+
+    // In the current template, the cover page lives in a Word header. Apply the
+    // same optional-block logic here so the metadata table can be removed.
+    updatedXml = applyOptionalTemplateBlocks(updatedXml, {
+      documentType,
+      includeMetadataTable,
+    });
+
+    updatedXml = replaceAllPlaceholders(updatedXml, replacements);
     zip.file(file.name, updatedXml);
   });
 
