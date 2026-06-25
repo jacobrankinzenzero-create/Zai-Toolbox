@@ -67,7 +67,9 @@ type AutodocMetadata = {
   orgName?: string;
   clientName?: string;
   clientEmail?: string;
-  [key: string]: string | undefined;
+  documentType?: string;
+  includeMetadataTable?: boolean;
+  [key: string]: string | boolean | undefined;
 };
 
 type GenerateAutodocDocxInput = {
@@ -134,6 +136,63 @@ function safeFileName(name: string): string {
  */
 function softenLongWords(value: string, every = 18): string {
   return value.replace(new RegExp(`([^\\s]{${every}})`, 'g'), '$1\u200B');
+}
+
+/**
+ * Removes the whole Word paragraph containing a marker.
+ *
+ * Used for optional single-line placeholders such as [[DOCUMENT_TYPE]].
+ * If no document type is supplied, we remove the paragraph instead of leaving
+ * a blank line above the title.
+ */
+function removeParagraphContainingMarker(documentXml: string, marker: string): string {
+  const paragraphs = documentXml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+
+  const markerParagraph = paragraphs.find((paragraph) =>
+    paragraph.includes(marker)
+  );
+
+  if (!markerParagraph) {
+    return documentXml;
+  }
+
+  return documentXml.replace(markerParagraph, '');
+}
+
+/**
+ * Removes the whole Word table containing a marker.
+ *
+ * Used for optional visual blocks, such as the metadata/version-control table.
+ * Put [[METADATA_TABLE]] somewhere inside that table in the Word template.
+ */
+function removeTableContainingMarker(documentXml: string, marker: string): string {
+  const markerIndex = documentXml.indexOf(marker);
+
+  if (markerIndex === -1) {
+    return documentXml;
+  }
+
+  const tableStart = documentXml.lastIndexOf('<w:tbl>', markerIndex);
+  const tableEnd = documentXml.indexOf('</w:tbl>', markerIndex);
+
+  if (tableStart === -1 || tableEnd === -1) {
+    return documentXml;
+  }
+
+  return (
+    documentXml.slice(0, tableStart) +
+    documentXml.slice(tableEnd + '</w:tbl>'.length)
+  );
+}
+
+/**
+ * Removes a marker while keeping the surrounding content.
+ *
+ * Used when the metadata table is included, so [[METADATA_TABLE]] does not
+ * appear in the final document.
+ */
+function removeMarkerText(documentXml: string, marker: string): string {
+  return documentXml.split(marker).join('');
 }
 
 /**
@@ -1333,14 +1392,20 @@ export async function generateAutodocDocx({
 
   const title = documentTitle || 'Untitled Statement of Work';
 
-  const replacements: Record<string, string> = {
-    DOCUMENT_TITLE: title,
-    ORG_NAME: metadata.orgName || 'Client Organisation',
-    CLIENT_NAME: metadata.clientName || 'Client Representative',
-    CLIENT_EMAIL: metadata.clientEmail || '',
-    USER_EMAIL: metadata.userEmail || 'Zenzero Consultant',
-    ISSUE_DATE: issueDate,
-  };
+const documentType =
+  typeof metadata.documentType === 'string'
+    ? metadata.documentType.trim()
+    : '';
+
+const replacements: Record<string, string> = {
+  DOCUMENT_TITLE: title,
+  DOCUMENT_TYPE: documentType,
+  ORG_NAME: metadata.orgName || 'Client Organisation',
+  CLIENT_NAME: metadata.clientName || 'Client Representative',
+  CLIENT_EMAIL: metadata.clientEmail || '',
+  USER_EMAIL: metadata.userEmail || 'Zenzero Consultant',
+  ISSUE_DATE: issueDate,
+};
 
   const imageContext: ImageBuildContext = {
     zip,
@@ -1348,14 +1413,30 @@ export async function generateAutodocDocx({
     imageCounter: 0,
   };
 
-  let documentXml = documentFile.asText();
+let documentXml = documentFile.asText();
 
-  documentXml = replaceAllPlaceholders(documentXml, replacements);
-  documentXml = await replaceSectionTableRows(
-    documentXml,
-    sections,
-    imageContext
-  );
+// If no document type is supplied, remove the whole paragraph containing
+// [[DOCUMENT_TYPE]] so the title does not have an awkward blank line above it.
+if (!documentType) {
+  documentXml = removeParagraphContainingMarker(documentXml, '[[DOCUMENT_TYPE]]');
+}
+
+// If the user unticks the metadata/version-control table option, remove the
+// whole table containing [[METADATA_TABLE]]. Otherwise, keep the table and
+// remove only the marker text.
+if (metadata.includeMetadataTable === false) {
+  documentXml = removeTableContainingMarker(documentXml, '[[METADATA_TABLE]]');
+} else {
+  documentXml = removeMarkerText(documentXml, '[[METADATA_TABLE]]');
+}
+
+documentXml = replaceAllPlaceholders(documentXml, replacements);
+
+documentXml = await replaceSectionTableRows(
+  documentXml,
+  sections,
+  imageContext
+);
 
   zip.file('word/document.xml', documentXml);
 

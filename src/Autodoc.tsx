@@ -27,15 +27,17 @@ interface ExportData {
   orgName?: string;
   clientName?: string;
   clientEmail?: string;
-  [key: string]: string | undefined;
+  documentType?: string;
+  includeMetadataTable?: boolean;
+  [key: string]: string | boolean | undefined;
 }
 
 interface ModalInput {
-  id: string;
+  id: keyof ExportData;
   label: string;
-  type: string;
-  placeholder: string;
-  required: boolean;
+  type: 'text' | 'email' | 'checkbox';
+  placeholder?: string;
+  required?: boolean;
 }
 
 interface ModalConfig {
@@ -56,6 +58,15 @@ interface TableContext {
 }
 
 const BRAND_COLOR = '#ff8300';
+
+const DEFAULT_EXPORT_DATA: ExportData = {
+  userEmail: '',
+  orgName: '',
+  clientName: '',
+  clientEmail: '',
+  documentType: '',
+  includeMetadataTable: true,
+};
 
 const AI_TONE_PRESETS: TonePreset[] = [
   {
@@ -1005,10 +1016,25 @@ export default function App() {
   const [activeTone, setActiveTone] = useState<TonePreset>(AI_TONE_PRESETS[0]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
-  const [modalData, setModalData] = useState<ExportData>({});
+  const [modalData, setModalData] = useState<ExportData>(DEFAULT_EXPORT_DATA);
   const [exportData, setExportData] = useState<ExportData>(() => {
     const saved = localStorage.getItem('autodoc_export_metadata');
-    return saved ? JSON.parse(saved) : {};
+
+    if (!saved) {
+      return DEFAULT_EXPORT_DATA;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as ExportData;
+
+      return {
+        ...DEFAULT_EXPORT_DATA,
+        ...parsed,
+        includeMetadataTable: parsed.includeMetadataTable !== false,
+      };
+    } catch {
+      return DEFAULT_EXPORT_DATA;
+    }
   });
 
   useEffect(() => {
@@ -1083,6 +1109,11 @@ export default function App() {
       const executeRecipe = () => {
         const recipe = RECIPES[recipeKey];
         setDocumentTitle(recipe.name);
+        setExportData((current) => ({
+          ...current,
+          documentType: 'Statement of Work',
+          includeMetadataTable: current.includeMetadataTable !== false,
+        }));
         setSections(
           recipe.sections.map((sec, idx) => ({
             id: `recipe_sec_${Date.now()}_${idx}`,
@@ -1195,47 +1226,71 @@ export default function App() {
 );
 
   const handleExportClick = useCallback(() => {
-    setModalData(exportData);
+    setModalData({
+      ...DEFAULT_EXPORT_DATA,
+      ...exportData,
+      includeMetadataTable: exportData.includeMetadataTable !== false,
+    });
+
     setModalConfig({
-      title: 'Export content Details',
+      title: 'Export document details',
       message:
-        'Please review content details for automatic formatting on the Zenzero corporate cover page template.',
+        'Review the document details below. These are used to populate the Word template.',
       inputs: [
         {
+          id: 'documentType',
+          label: 'Document type / subtitle',
+          type: 'text',
+          placeholder: 'e.g. Statement of Work, Proposal, Project Brief',
+          required: false,
+        },
+        {
           id: 'userEmail',
-          label: 'Zenzero Creator Email',
+          label: 'Zenzero contact',
           type: 'email',
           placeholder: 'yourname@zenzero.co.uk',
           required: true,
         },
         {
           id: 'orgName',
-          label: "Client Organisation's Name",
+          label: 'Prepared for',
           type: 'text',
-          placeholder: 'e.g. Acme Corporation',
+          placeholder: 'e.g. Client organisation',
           required: true,
         },
         {
           id: 'clientName',
-          label: 'Client Main Representative',
+          label: 'Client contact',
           type: 'text',
           placeholder: 'e.g. Jane Doe',
           required: false,
         },
         {
           id: 'clientEmail',
-          label: 'Client Contact Email',
+          label: 'Client contact email',
           type: 'email',
           placeholder: 'jane@acme.com',
+          required: false,
+        },
+        {
+          id: 'includeMetadataTable',
+          label: 'Include document details table in final document',
+          type: 'checkbox',
           required: false,
         },
       ],
       confirmText: 'Generate & Download',
       isDestructive: false,
       action: async (data) => {
-        setExportData(data);
+        const exportPayload: ExportData = {
+          ...DEFAULT_EXPORT_DATA,
+          ...data,
+          includeMetadataTable: data.includeMetadataTable !== false,
+        };
+
+        setExportData(exportPayload);
         setModalConfig(null);
-        await executeExport(data);
+        await executeExport(exportPayload);
       },
     });
   }, [executeExport, exportData]);
@@ -1522,28 +1577,57 @@ export default function App() {
 
             {modalConfig.inputs && (
               <div className="space-y-3.5 mb-2">
-                {modalConfig.inputs.map((input) => (
-                  <div key={input.id}>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">
-                      {input.label}{' '}
-                      {input.required && (
-                        <span className="text-red-500">*</span>
-                      )}
-                    </label>
-                    <input
-                      type={input.type}
-                      placeholder={input.placeholder}
-                      value={modalData[input.id] || ''}
-                      onChange={(e) =>
-                        setModalData({
-                          ...modalData,
-                          [input.id]: e.target.value,
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8300]/20 focus:border-[#ff8300] text-sm"
-                    />
-                  </div>
-                ))}
+                {modalConfig.inputs.map((input) => {
+                  const value = modalData[input.id];
+
+                  if (input.type === 'checkbox') {
+                    return (
+                      <label
+                        key={input.id}
+                        className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(value)}
+                          onChange={(e) =>
+                            setModalData((current) => ({
+                              ...current,
+                              [input.id]: e.target.checked,
+                            }))
+                          }
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#ff8300] focus:ring-[#ff8300]"
+                        />
+
+                        <span className="font-medium leading-5">
+                          {input.label}
+                        </span>
+                      </label>
+                    );
+                  }
+
+                  return (
+                    <div key={input.id}>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        {input.label}{' '}
+                        {input.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </label>
+                      <input
+                        type={input.type}
+                        placeholder={input.placeholder}
+                        value={String(value || '')}
+                        onChange={(e) =>
+                          setModalData((current) => ({
+                            ...current,
+                            [input.id]: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8300]/20 focus:border-[#ff8300] text-sm"
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1558,10 +1642,12 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => modalConfig.action(modalData)}
-                disabled={modalConfig.inputs?.some(
-                  (input) =>
-                    input.required && !(modalData[input.id] || '').trim()
-                )}
+                disabled={modalConfig.inputs?.some((input) => {
+                  if (!input.required) return false;
+                  if (input.type === 'checkbox') return !modalData[input.id];
+
+                  return !String(modalData[input.id] || '').trim();
+                })}
                 className={`px-5 py-2 text-xs font-semibold text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${
                   modalConfig.isDestructive
                     ? 'bg-red-500 hover:bg-red-600'
