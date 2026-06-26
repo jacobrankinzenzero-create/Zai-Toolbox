@@ -1005,7 +1005,7 @@ export default function App() {
   const navigate = useNavigate();
   const [documentTitle, setDocumentTitle] = useState<string>(() => {
     return (
-      localStorage.getItem('autodoc_title') || 'Untitled Statement of Work'
+      localStorage.getItem('autodoc_title') || 'Untitled Document'
     );
   });
   const [sections, setSections] = useState<Section[]>(() => {
