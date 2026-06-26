@@ -18,9 +18,7 @@ const AUTODOC_NUMBER_LIST_1_STYLE = 'AUTODOCNumberList1';
  * Template files.
  *
  * This is intentionally a two-template setup. It is much safer than trying to
- * delete Word tables from inside the generated .docx XML. Word stores headers,
- * tables, shapes, and nested layouts in complicated XML, so deleting blocks by
- * code can corrupt the file.
+ * delete Word tables from inside the generated .docx XML.
  *
  * Put both files in:
  *   public/templates/
@@ -28,8 +26,10 @@ const AUTODOC_NUMBER_LIST_1_STYLE = 'AUTODOCNumberList1';
  * The no-metadata version should be a normal Word copy of the template with the
  * visible metadata/details table manually removed.
  */
-const TEMPLATE_WITH_METADATA = 'autodoc-sow-template.docx';
-const TEMPLATE_WITHOUT_METADATA = 'autodoc-sow-template-no-metadata.docx';
+const TEMPLATE_WITH_METADATA = 'autodoc-default-template.docx';
+const TEMPLATE_WITHOUT_METADATA = 'autodoc-default-template-no-metadata.docx';
+const TEMPLATE_WITH_METADATA = 'autodoc-default-template.docx';
+const TEMPLATE_WITHOUT_METADATA = 'autodoc-default-template-no-metadata.docx';
 
 const BODY_TEXT_COLOR = '242424';
 const BODY_FONT_SIZE = 22;
@@ -39,7 +39,7 @@ const BODY_FONT_SIZE = 22;
  *
  * This file creates a real .docx file from a Word template stored in:
  *
- *   public/templates/autodoc-sow-template.docx
+ *   public/templates/autodoc-default-template.docx
  *
  * It does this without paid Docxtemplater modules.
  *
