@@ -1508,7 +1508,7 @@ export default function App() {
               Export Word Document
             </button>
             <p className="text-[10px] text-gray-400 text-center mb-4 leading-relaxed">
-              Export builds a clean corporate cover page template dynamically.
+              Export builds a clean document from the selected AUTODOC Word template.
             </p>
 
             <button
@@ -1580,7 +1580,7 @@ export default function App() {
               </p>
               <p className="text-sm text-gray-400 mt-1 max-w-md mx-auto">
                 Generate comprehensive, industry-standard documents instantly by
-                choosing Level 1, 2, or 3 SOW blueprints on the sidebar menu.
+                choosing one of the available document recipes on the sidebar menu.
               </p>
             </div>
           )}

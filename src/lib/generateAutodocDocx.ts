@@ -18,7 +18,9 @@ const AUTODOC_NUMBER_LIST_1_STYLE = 'AUTODOCNumberList1';
  * Template files.
  *
  * This is intentionally a two-template setup. It is much safer than trying to
- * delete Word tables from inside the generated .docx XML.
+ * delete Word tables from inside the generated .docx XML. Word stores headers,
+ * tables, shapes, and nested layouts in complicated XML, so deleting blocks by
+ * code can corrupt the file.
  *
  * Put both files in:
  *   public/templates/
@@ -28,14 +30,12 @@ const AUTODOC_NUMBER_LIST_1_STYLE = 'AUTODOCNumberList1';
  */
 const TEMPLATE_WITH_METADATA = 'autodoc-default-template.docx';
 const TEMPLATE_WITHOUT_METADATA = 'autodoc-default-template-no-metadata.docx';
-const TEMPLATE_WITH_METADATA = 'autodoc-default-template.docx';
-const TEMPLATE_WITHOUT_METADATA = 'autodoc-default-template-no-metadata.docx';
 
 const BODY_TEXT_COLOR = '242424';
 const BODY_FONT_SIZE = 22;
 
 /**
- * AUTODOC Word export generator.
+ * AUTODOC Word document export generator.
  *
  * This file creates a real .docx file from a Word template stored in:
  *
@@ -1486,7 +1486,7 @@ export async function generateAutodocDocx({
     year: 'numeric',
   });
 
-  const title = documentTitle || 'Untitled Statement of Work';
+  const title = documentTitle || 'Untitled Document';
 
   const documentType =
     typeof metadata.documentType === 'string'
