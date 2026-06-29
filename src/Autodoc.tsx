@@ -1,12 +1,13 @@
-import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import './index.css';
 import { useNavigate } from 'react-router-dom';
 import { Home } from 'lucide-react';
 import { generateAutodocDocx } from './lib/generateAutodocDocx';
-import TiptapSectionEditor from './components/TiptapSectionEditor';
 import type { TonePreset, Section, ExportData, ModalConfig } from './features/autodoc/types';
 import { DEFAULT_EXPORT_DATA } from './features/autodoc/config/exportDefaults';
 import { RECIPES, type RecipeKey } from './features/autodoc/config/recipes';
+import ExportModal from './features/autodoc/components/ExportModal';
+import SectionCard, { countWords } from './features/autodoc/components/SectionCard';
 
 const AI_TONE_PRESETS: TonePreset[] = [
   {
@@ -51,6 +52,7 @@ const IconPlus = () => (
     <line x1="5" y1="12" x2="19" y2="12"></line>
   </svg>
 );
+
 const IconDownload = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -68,6 +70,7 @@ const IconDownload = () => (
     <line x1="12" y1="15" x2="12" y2="3"></line>
   </svg>
 );
+
 const IconTrash = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -84,6 +87,7 @@ const IconTrash = () => (
     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
   </svg>
 );
+
 const IconFileText = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -103,87 +107,7 @@ const IconFileText = () => (
     <polyline points="10 9 9 9 8 9"></polyline>
   </svg>
 );
-const IconSparkles = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
-  </svg>
-);
-const IconChevronUp = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="18 15 12 9 6 15"></polyline>
-  </svg>
-);
-const IconChevronDown = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="6 9 12 15 18 9"></polyline>
-  </svg>
-);
-const IconImage = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-    <polyline points="21 15 16 10 5 21"></polyline>
-  </svg>
-);
-const IconTable = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-    <line x1="3" y1="9" x2="21" y2="9"></line>
-    <line x1="3" y1="15" x2="21" y2="15"></line>
-    <line x1="9" y1="3" x2="9" y2="21"></line>
-    <line x1="15" y1="3" x2="15" y2="21"></line>
-  </svg>
-);
+
 const IconMenu = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -201,6 +125,7 @@ const IconMenu = () => (
     <line x1="3" y1="18" x2="21" y2="18"></line>
   </svg>
 );
+
 const IconClose = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -217,386 +142,106 @@ const IconClose = () => (
     <line x1="6" y1="6" x2="18" y2="18"></line>
   </svg>
 );
-const IconInfo = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="10"></circle>
-    <line x1="12" y1="16" x2="12" y2="12"></line>
-    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-  </svg>
-);
 
-/* ==============================================================================
-   DEV TEAM NOTES: AZURE AI INTEGRATION
-   ==============================================================================
-   This function has been stubbed to remove the client-side Google API call. 
-   You must wire this up to your Azure OpenAI resource.
-   ============================================================================== */
-const generateAIContent = async (
-  prompt: string,
-  customInstruction: string
-): Promise<string> => {
-  const defaultInstruction =
-    'You are a professional corporate document writer. Write professional, formal content fulfilling the request. IMPORTANT: Return the response formatted strictly as basic HTML using ONLY <p>, <ul>, <li>, <strong>, <em>, and <br> tags. Do not use Markdown. Do not include outer html tags, body tags, or CSS. Return only raw body-level HTML tags.';
-  const activeInstruction = customInstruction
-    ? `${defaultInstruction} ${customInstruction}`
-    : defaultInstruction;
+const getInitialSections = (): Section[] => {
+  const saved = localStorage.getItem('autodoc_sections');
 
-  // Simulate network latency for UI demonstration until Azure is hooked up
-  const delay = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
-  await delay(1500);
+  if (saved) {
+    try {
+      return JSON.parse(saved) as Section[];
+    } catch {
+      // Fall through to the default section if the stored JSON is invalid.
+    }
+  }
 
-  // TODO: Replace this mock return with actual Azure AI endpoint fetch logic (see comments above).
-  return `<p><em>[DEV TEAM: Replace this mock block with actual Azure AI payload response. System instruction applied: ${customInstruction}]</em></p><p>You requested: ${prompt}</p>`;
+  return [
+    {
+      id: 'sec_1',
+      title: 'Introduction',
+      content:
+        '<p>Start drafting your introduction here, or trigger the <strong>AI Assistant</strong> in this block to synthesize standard paragraphs dynamically.</p>',
+      images: [],
+      promptMode: false,
+    },
+  ];
 };
 
-const countWords = (html?: string): number => {
-  if (!html) return 0;
-  const text = html.replace(/<[^>]*>/g, ' ');
-  return text
-    .trim()
-    .split(/\s+/)
-    .filter((w) => w.length > 0).length;
+const getInitialExportData = (): ExportData => {
+  const saved = localStorage.getItem('autodoc_export_metadata');
+
+  if (!saved) {
+    return DEFAULT_EXPORT_DATA;
+  }
+
+  try {
+    const parsed = JSON.parse(saved) as ExportData;
+
+    return {
+      ...DEFAULT_EXPORT_DATA,
+      ...parsed,
+      includeMetadataTable: parsed.includeMetadataTable !== false,
+    };
+  } catch {
+    return DEFAULT_EXPORT_DATA;
+  }
 };
 
-// --- RICH TEXT EDITOR COMPONENT ---
-interface RichTextEditorProps {
-  content: string;
-  onChange: (content: string) => void;
-  onGenerateAI: (promptText: string) => Promise<void>;
-  isGenerating?: boolean;
-  isPromptMode: boolean;
-  setPromptMode: (val: boolean) => void;
-  currentTone: TonePreset;
-}
-
-const RichTextEditor = memo(
-  ({
-    content,
-    onChange,
-    onGenerateAI,
-    isGenerating,
-    isPromptMode,
-    setPromptMode,
-    currentTone,
-  }: {
-    content: string;
-    onChange: (content: string) => void;
-    onGenerateAI?: (promptText: string) => Promise<void>;
-    isGenerating?: boolean;
-    isPromptMode?: boolean;
-    setPromptMode?: (val: boolean) => void;
-    currentTone?: TonePreset;
-  }) => {
-    return (
-      <TiptapSectionEditor
-        content={content}
-        onChange={onChange}
-      />
-    );
-  }
-);
-
-RichTextEditor.displayName = 'RichTextEditor';
-
-// --- SECTION COMPONENT ---
-interface SectionComponentProps {
-  section: Section;
-  index: number;
-  totalSections: number;
-  updateSection: (id: string, updates: Partial<Section>) => void;
-  removeSection: (id: string) => void;
-  moveSection: (index: number, direction: number) => void;
-  activeTone: TonePreset;
-}
-
-const SectionComponent: React.FC<SectionComponentProps> = memo(
-  ({
-    section,
-    index,
-    totalSections,
-    updateSection,
-    removeSection,
-    moveSection,
-    activeTone,
-  }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const wordCount = countWords(section.content);
-
-    const handleTitleChange = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) =>
-        updateSection(section.id, { title: e.target.value }),
-      [section.id, updateSection]
-    );
-    const handleContentChange = useCallback(
-      (content: string) => updateSection(section.id, { content }),
-      [section.id, updateSection]
-    );
-
-    const handleImageUpload = useCallback(
-      (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            updateSection(section.id, {
-              images: [...(section.images || []), reader.result as string],
-            });
-          };
-          reader.readAsDataURL(file);
-        }
-      },
-      [section.id, section.images, updateSection]
-    );
-
-    const handleRemoveImage = useCallback(
-      (indexToRemove: number) => {
-        const newImages = (section.images || []).filter(
-          (_, idx) => idx !== indexToRemove
-        );
-        updateSection(section.id, { images: newImages });
-      },
-      [section.id, section.images, updateSection]
-    );
-
-    const triggerAIGeneration = useCallback(
-      async (promptText: string) => {
-        updateSection(section.id, { isGenerating: true, error: null });
-        try {
-          const promptContext = `Please write a highly detailed professional document section with title: "${section.title}". Use the following guidelines: "${promptText}".`;
-          const generatedHtml = await generateAIContent(
-            promptContext,
-            activeTone.systemInstruction
-          );
-          updateSection(section.id, {
-            content: generatedHtml,
-            isGenerating: false,
-            promptMode: false,
-          });
-        } catch (err: any) {
-          updateSection(section.id, {
-            isGenerating: false,
-            error:
-              err.message || 'AI Generation failed. Check backend connection.',
-          });
-        }
-      },
-      [section.id, section.title, activeTone, updateSection]
-    );
-
-    return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 group hover:shadow-md transition-all duration-200">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 border-b border-gray-100 bg-gray-50/50 rounded-t-xl">
-          <div className="flex items-center flex-1 gap-2">
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                disabled={index === 0}
-                onClick={() => moveSection(index, -1)}
-                className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
-                title="Move Section Up"
-              >
-                <IconChevronUp />
-              </button>
-              <button
-                type="button"
-                disabled={index === totalSections - 1}
-                onClick={() => moveSection(index, 1)}
-                className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent"
-                title="Move Section Down"
-              >
-                <IconChevronDown />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-xs font-bold text-gray-400 bg-gray-200/60 px-2 py-0.5 rounded-md">
-                #{index + 1}
-              </span>
-              <input
-                type="text"
-                value={section.title}
-                onChange={handleTitleChange}
-                placeholder="Section Title"
-                className="text-base font-semibold text-gray-800 bg-transparent border-none focus:outline-none w-full placeholder-gray-300 focus:ring-1 focus:ring-orange-100 rounded px-1"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2">
-            <span className="text-xs text-gray-400 font-medium bg-gray-100 px-2 py-1 rounded">
-              {wordCount} words
-            </span>
-            <button
-              type="button"
-              onClick={() => removeSection(section.id)}
-              className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-md hover:bg-red-50"
-              title="Delete Section"
-            >
-              <IconTrash />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 space-y-4">
-          <RichTextEditor
-            content={section.content}
-            onChange={handleContentChange}
-            onGenerateAI={triggerAIGeneration}
-            isGenerating={section.isGenerating}
-            isPromptMode={section.promptMode}
-            setPromptMode={(val: boolean) =>
-              updateSection(section.id, { promptMode: val })
-            }
-            currentTone={activeTone}
-          />
-
-          {section.error && (
-            <div className="text-sm text-red-600 bg-red-50 p-3.5 rounded-lg border border-red-100 flex items-start gap-2">
-              <span className="mt-0.5 text-red-500 flex-shrink-0">
-                <IconInfo />
-              </span>
-              <div>
-                <p className="font-semibold">Generation Problem</p>
-                <p className="text-xs mt-0.5">{section.error}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="pt-2">
-            {section.images && section.images.length > 0 && (
-              <div className="flex flex-wrap gap-3 mb-3">
-                {section.images.map((img, idx) => (
-                  <div key={idx} className="relative group/img">
-                    <img
-                      src={img}
-                      alt="Attachment"
-                      className="h-20 w-auto rounded-lg border border-gray-200 object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveImage(idx)}
-                      className="absolute -top-1.5 -right-1.5 bg-red-500 text-white shadow-md rounded-full p-1 hover:bg-red-600 transition-all scale-90"
-                      title="Remove attachment"
-                    >
-                      <IconTrash />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-semibold flex items-center text-gray-500 hover:text-[#ff8300] transition-colors gap-1.5 px-3 py-1.5 rounded-lg hover:bg-gray-100"
-            >
-              <IconImage /> Attach Asset / Sketch
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-);
-SectionComponent.displayName = 'SectionComponent';
-
-// --- MAIN APP COMPONENT ---
+/**
+ * AUTODOC document builder page.
+ *
+ * This file now acts as the page/controller for AUTODOC:
+ * - document title/state
+ * - recipe application
+ * - draft save/load
+ * - export modal setup
+ * - Word export execution
+ *
+ * Larger UI chunks live in feature components so the main page stays readable.
+ */
 export default function App() {
   const navigate = useNavigate();
   const [documentTitle, setDocumentTitle] = useState<string>(() => {
-    return (
-      localStorage.getItem('autodoc_title') || 'Untitled Document'
-    );
+    return localStorage.getItem('autodoc_title') || 'Untitled Document';
   });
-  const [sections, setSections] = useState<Section[]>(() => {
-    const saved = localStorage.getItem('autodoc_sections');
-    return saved
-      ? JSON.parse(saved)
-      : [
-          {
-            id: 'sec_1',
-            title: 'Introduction',
-            content:
-              '<p>Start drafting your introduction here, or trigger the <strong>AI Assistant</strong> in this block to synthesize standard paragraphs dynamically.</p>',
-            images: [],
-            promptMode: false,
-          },
-        ];
-  });
-
+  const [sections, setSections] = useState<Section[]>(getInitialSections);
   const [activeTone, setActiveTone] = useState<TonePreset>(AI_TONE_PRESETS[0]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
   const [modalData, setModalData] = useState<ExportData>(DEFAULT_EXPORT_DATA);
-  const [exportData, setExportData] = useState<ExportData>(() => {
-    const saved = localStorage.getItem('autodoc_export_metadata');
-
-    if (!saved) {
-      return DEFAULT_EXPORT_DATA;
-    }
-
-    try {
-      const parsed = JSON.parse(saved) as ExportData;
-
-      return {
-        ...DEFAULT_EXPORT_DATA,
-        ...parsed,
-        includeMetadataTable: parsed.includeMetadataTable !== false,
-      };
-    } catch {
-      return DEFAULT_EXPORT_DATA;
-    }
-  });
+  const [exportData, setExportData] = useState<ExportData>(getInitialExportData);
 
   useEffect(() => {
     localStorage.setItem('autodoc_title', documentTitle);
   }, [documentTitle]);
 
- useEffect(() => {
-  try {
-    const sectionsForStorage = sections.map((section) => ({
-      ...section,
-      images: [], // Do not persist base64 images to localStorage
-    }));
+  useEffect(() => {
+    try {
+      const sectionsForStorage = sections.map((section) => ({
+        ...section,
+        images: [], // Do not persist base64 images to localStorage.
+      }));
 
-    localStorage.setItem(
-      'autodoc_sections',
-      JSON.stringify(sectionsForStorage)
-    );
-  } catch (error) {
-    console.warn('Could not save AUTODOC sections to localStorage:', error);
-  }
-}, [sections]);
+      localStorage.setItem(
+        'autodoc_sections',
+        JSON.stringify(sectionsForStorage)
+      );
+    } catch (error) {
+      console.warn('Could not save AUTODOC sections to localStorage:', error);
+    }
+  }, [sections]);
 
   useEffect(() => {
     localStorage.setItem('autodoc_export_metadata', JSON.stringify(exportData));
   }, [exportData]);
 
   const totalWords = sections.reduce(
-    (acc, sec) => acc + countWords(sec.content),
+    (accumulator, section) => accumulator + countWords(section.content),
     0
   );
 
   const addSection = useCallback(() => {
-    setSections((prev) => [
-      ...prev,
+    setSections((previousSections) => [
+      ...previousSections,
       {
         id: `sec_${Date.now()}`,
         title: 'New Section',
@@ -608,25 +253,31 @@ export default function App() {
   }, []);
 
   const removeSection = useCallback((id: string) => {
-    setSections((prev) => prev.filter((s) => s.id !== id));
+    setSections((previousSections) =>
+      previousSections.filter((section) => section.id !== id)
+    );
   }, []);
 
   const updateSection = useCallback((id: string, updates: Partial<Section>) => {
-    setSections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
+    setSections((previousSections) =>
+      previousSections.map((section) =>
+        section.id === id ? { ...section, ...updates } : section
+      )
     );
   }, []);
 
   const moveSection = useCallback(
     (index: number, direction: number) => {
-      const targetIdx = index + direction;
-      if (targetIdx < 0 || targetIdx >= sections.length) return;
-      setSections((prev) => {
-        const copy = [...prev];
-        const temp = copy[index];
-        copy[index] = copy[targetIdx];
-        copy[targetIdx] = temp;
-        return copy;
+      const targetIndex = index + direction;
+
+      if (targetIndex < 0 || targetIndex >= sections.length) return;
+
+      setSections((previousSections) => {
+        const copiedSections = [...previousSections];
+        const currentSection = copiedSections[index];
+        copiedSections[index] = copiedSections[targetIndex];
+        copiedSections[targetIndex] = currentSection;
+        return copiedSections;
       });
     },
     [sections.length]
@@ -636,6 +287,7 @@ export default function App() {
     (recipeKey: RecipeKey) => {
       const executeRecipe = () => {
         const recipe = RECIPES[recipeKey];
+
         setDocumentTitle(recipe.name);
         setExportData((current) => ({
           ...current,
@@ -643,10 +295,10 @@ export default function App() {
           includeMetadataTable: current.includeMetadataTable !== false,
         }));
         setSections(
-          recipe.sections.map((sec, idx) => ({
-            id: `recipe_sec_${Date.now()}_${idx}`,
-            title: sec.title,
-            content: sec.content,
+          recipe.sections.map((section, index) => ({
+            id: `recipe_sec_${Date.now()}_${index}`,
+            title: section.title,
+            content: section.content,
             images: [],
             promptMode: false,
           }))
@@ -673,10 +325,11 @@ export default function App() {
 
   const clearAllSections = useCallback(() => {
     if (sections.length === 0) return;
+
     setModalConfig({
       title: 'Reset Current Workspace?',
       message:
-        'Are you sure you want to delete all sections and start over? This actions is irreversible.',
+        'Are you sure you want to delete all sections and start over? This action is irreversible.',
       confirmText: 'Reset Workspace',
       isDestructive: true,
       action: () => {
@@ -706,26 +359,40 @@ export default function App() {
   }, [documentTitle, sections, exportData]);
 
   const handleBackupImport = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+
       if (!file) return;
+
       const reader = new FileReader();
-      reader.onload = (event) => {
+
+      reader.onload = (readerEvent) => {
         try {
-          const result = event.target?.result as string;
+          const result = readerEvent.target?.result as string;
           const parsed = JSON.parse(result);
+
           if (parsed.title && Array.isArray(parsed.sections)) {
             setDocumentTitle(parsed.title);
             setSections(parsed.sections);
-            if (parsed.metadata) setExportData(parsed.metadata);
+
+            if (parsed.metadata) {
+              setExportData({
+                ...DEFAULT_EXPORT_DATA,
+                ...parsed.metadata,
+                includeMetadataTable:
+                  parsed.metadata.includeMetadataTable !== false,
+              });
+            }
+
             setMobileMenuOpen(false);
           } else {
             alert('Invalid backup file layout structure.');
           }
-        } catch (err) {
+        } catch {
           alert('Could not parse JSON configuration.');
         }
       };
+
       reader.readAsText(file);
     },
     []
@@ -835,7 +502,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-gray-800">
-      {/* MOBILE CONTAINER HEADER */}
       <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3.5 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div
@@ -867,7 +533,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* DASHBOARD SIDEBAR FOR DESKTOP & MOBILE */}
       <div
         className={`w-full md:w-64 bg-white border-r border-gray-200 flex flex-col fixed md:h-screen z-20 shadow-sm transition-transform duration-300 md:translate-x-0 ${
           mobileMenuOpen
@@ -906,18 +571,18 @@ export default function App() {
               AI tone
             </h3>
             <div className="grid grid-cols-1 gap-1.5">
-              {AI_TONE_PRESETS.map((t) => (
+              {AI_TONE_PRESETS.map((tone) => (
                 <button
-                  key={t.id}
+                  key={tone.id}
                   type="button"
-                  onClick={() => setActiveTone(t)}
+                  onClick={() => setActiveTone(tone)}
                   className={`w-full text-left text-xs px-3 py-2 rounded-lg border transition-all duration-200 font-medium ${
-                    activeTone.id === t.id
+                    activeTone.id === tone.id
                       ? 'border-[#ff8300] bg-orange-50 text-[#ff8300] font-bold shadow-xs'
                       : 'border-transparent hover:bg-gray-50 text-gray-600'
                   }`}
                 >
-                  {t.name}
+                  {tone.name}
                 </button>
               ))}
             </div>
@@ -1025,7 +690,8 @@ export default function App() {
               Export Word Document
             </button>
             <p className="text-[10px] text-gray-400 text-center mb-4 leading-relaxed">
-              Export builds a clean document from the selected AUTODOC Word template.
+              Export builds a clean document from the selected AUTODOC Word
+              template.
             </p>
 
             <button
@@ -1056,7 +722,7 @@ export default function App() {
             <input
               type="text"
               value={documentTitle}
-              onChange={(e) => setDocumentTitle(e.target.value)}
+              onChange={(event) => setDocumentTitle(event.target.value)}
               className="text-xl sm:text-2xl font-bold text-gray-900 bg-transparent border-none focus:outline-none w-full"
               placeholder="Document Title"
             />
@@ -1066,7 +732,7 @@ export default function App() {
         <div className="w-full max-w-4xl py-6 sm:py-10 px-4 sm:px-8">
           <div className="space-y-4">
             {sections.map((section, index) => (
-              <SectionComponent
+              <SectionCard
                 key={section.id}
                 section={section}
                 index={index}
@@ -1097,93 +763,21 @@ export default function App() {
               </p>
               <p className="text-sm text-gray-400 mt-1 max-w-md mx-auto">
                 Generate comprehensive, industry-standard documents instantly by
-                choosing one of the available document recipes on the sidebar menu.
+                choosing one of the available document recipes on the sidebar
+                menu.
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* CONFIRMATION & EXPORT INFORMATION PROMPTER */}
       {modalConfig && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden p-6 border border-gray-100">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">
-              {modalConfig.title}
-            </h3>
-            <p className="text-gray-500 text-xs mb-4">{modalConfig.message}</p>
-
-            {modalConfig.inputs && (
-              <div className="space-y-3.5 mb-2">
-                {modalConfig.inputs.map((input) => {
-                  if (input.type === 'checkbox') {
-                    return (
-                      <label
-                        key={input.id}
-                        className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={modalData[input.id] !== false}
-                          onChange={(e) =>
-                            setModalData({
-                              ...modalData,
-                              [input.id]: e.target.checked,
-                            })
-                          }
-                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#ff8300] focus:ring-[#ff8300]"
-                        />
-                        <span>{input.label}</span>
-                      </label>
-                    );
-                  }
-
-                  return (
-                    <div key={input.id}>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        {input.label}
-                      </label>
-                      <input
-                        type={input.type}
-                        placeholder={input.placeholder}
-                        value={String(modalData[input.id] || '')}
-                        onChange={(e) =>
-                          setModalData({
-                            ...modalData,
-                            [input.id]: e.target.value,
-                          })
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8300]/20 focus:border-[#ff8300] text-sm"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2.5 mt-6">
-              <button
-                type="button"
-                onClick={() => setModalConfig(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => modalConfig.action(modalData)}
-                disabled={false}
-                className={`px-5 py-2 text-xs font-semibold text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${
-                  modalConfig.isDestructive
-                    ? 'bg-red-500 hover:bg-red-600'
-                    : 'bg-[#ff8300] hover:bg-[#e67600]'
-                }`}
-              >
-                {modalConfig.confirmText}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ExportModal
+          modalConfig={modalConfig}
+          modalData={modalData}
+          setModalData={setModalData}
+          onCancel={() => setModalConfig(null)}
+        />
       )}
     </div>
   );
